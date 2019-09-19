@@ -345,8 +345,8 @@ typedef struct xslice_array_t
     xmem_slice_t     xslice_aptr[XSLICE_ARRAY_SIZE]; ///< 分片数组
 } xslice_array_t;
 
-typedef volatile x_uint32_t      xatomic_size_t;
-typedef volatile xslice_arrptr_t xatomic_arrptr_t;
+typedef x_uint32_t volatile      xatomic_size_t;
+typedef xslice_arrptr_t volatile xatomic_arrptr_t;
 
 /**
  * @struct xslice_rqueue_t
@@ -362,12 +362,9 @@ typedef struct xslice_rqueue_t
 
     x_uint32_t       xarray_epos;   ///< 队列中的终点位置
     xslice_arrptr_t  xarray_eptr;   ///< 分片数组块链表的终点块
-
-    x_uint32_t       xarray_tpos;   ///< 队列中的结尾位置
-    xslice_arrptr_t  xarray_tptr;   ///< 分片数组块链表的结尾块
 } xslice_rqueue_t;
 
-typedef volatile x_uint32_t   x_spinlock_t;
+typedef x_uint32_t volatile   x_spinlock_t;
 
 /**
  * @struct xmem_pool_t
@@ -903,8 +900,6 @@ static x_void_t xsrque_init(xsrque_handle_t xsrque_ptr)
     xsrque_ptr->xarray_bptr = X_NULL;
     xsrque_ptr->xarray_epos = 0;
     xsrque_ptr->xarray_eptr = X_NULL;
-    xsrque_ptr->xarray_tpos = 0;
-    xsrque_ptr->xarray_tptr = X_NULL;
 
     xsrque_ptr->xarray_bptr =
         (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL);
@@ -944,7 +939,9 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
 
     //======================================
 
-    xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, X_NULL);
+    xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+        (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, (x_void_t *)X_NULL);
+
     if (X_NULL != xarray_ptr)
     {
         xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
@@ -958,8 +955,6 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
     xsrque_ptr->xarray_bptr = X_NULL;
     xsrque_ptr->xarray_epos = 0;
     xsrque_ptr->xarray_eptr = X_NULL;
-    xsrque_ptr->xarray_tpos = 0;
-    xsrque_ptr->xarray_tptr = X_NULL;
 
     //======================================
 }
@@ -973,14 +968,14 @@ static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
     xslice_arrptr_t xarray_ptr = X_NULL;
 
     xsrque_ptr->xarray_eptr->xslice_aptr[xsrque_ptr->xarray_epos] = xemt_value;
-    xsrque_ptr->xarray_tptr = xsrque_ptr->xarray_eptr;
-    xsrque_ptr->xarray_tpos = xsrque_ptr->xarray_epos;
 
     xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 1);
 
     if (++xsrque_ptr->xarray_epos == XSLICE_ARRAY_SIZE)
     {
-        xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, X_NULL);
+        xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+            (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, (x_void_t *)X_NULL);
+
         if (X_NULL != xarray_ptr)
         {
             xsrque_ptr->xarray_eptr->xarray_next = xarray_ptr;
@@ -1024,7 +1019,9 @@ static xmem_slice_t xsrque_pop(xsrque_handle_t xsrque_ptr)
         xsrque_ptr->xarray_bptr->xarray_prev = X_NULL;
         xsrque_ptr->xarray_bpos = 0;
 
-        xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, xarray_ptr);
+        xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+            (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, xarray_ptr);
+
         if (X_NULL != xarray_ptr)
         {
             xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
