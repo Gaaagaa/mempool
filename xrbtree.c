@@ -111,22 +111,22 @@ typedef struct x_rbtree_t
 #define X_RED    0
 #define X_BLACK  1
 
-#define X_SPIN_CLR(xiter_node)  ((xiter_node)->xut_color = !(xiter_node)->xut_color)
-#define X_GET_VKEY(xiter_node)  ((xrbt_vkey_t)((xiter_node)->xvkey_ptr))
-#define X_IS_NIL(xiter_node)    (0 == (xiter_node)->xut_ksize)
-#define X_NOT_NIL(xiter_node)   (0 != (xiter_node)->xut_ksize)
+#define XNODE_SPIN_CLR(xiter_node)  ((xiter_node)->xut_color = !(xiter_node)->xut_color)
+#define XNODE_VKEY(xiter_node)      ((xrbt_vkey_t)((xiter_node)->xvkey_ptr))
+#define XNODE_IS_NIL(xiter_node)    (0 == (xiter_node)->xut_ksize)
+#define XNODE_NOT_NIL(xiter_node)   (0 != (xiter_node)->xut_ksize)
 
-#define X_IS_DOCKED(xiter_node)                           \
+#define XNODE_IS_DOCKED(xiter_node)                       \
             ((XRBT_NULL != (xiter_node)->xiter_parent) && \
              (XRBT_NULL != (xiter_node)->xiter_left  ) && \
              (XRBT_NULL != (xiter_node)->xiter_right ))   \
 
-#define X_IS_UNDOCKED(xiter_node)                         \
+#define XNODE_IS_UNDOCKED(xiter_node)                     \
             ((XRBT_NULL == (xiter_node)->xiter_parent) && \
              (XRBT_NULL == (xiter_node)->xiter_left  ) && \
              (XRBT_NULL == (xiter_node)->xiter_right ))   \
 
-#define X_UNDOCK(xiter_node)                              \
+#define XNODE_UNDOCK(xiter_node)                          \
             do                                            \
             {                                             \
                 (xiter_node)->xiter_parent = XRBT_NULL;   \
@@ -134,22 +134,22 @@ typedef struct x_rbtree_t
                 (xiter_node)->xiter_right  = XRBT_NULL;   \
             } while (0)                                   \
 
-#define X_BEGIN(xtree_ptr)      ((xtree_ptr)->xiter_lnode)
-#define X_RBEGIN(xtree_ptr)     ((xtree_ptr)->xiter_rnode)
-#define X_GET_NIL(xtree_ptr)    ((x_rbnode_iter)(&(xtree_ptr)->xnode_nil))
-#define X_SET_NIL(xtree_ptr, xiter_node) \
+#define XTREE_BEGIN(xtree_ptr)      ((xtree_ptr)->xiter_lnode)
+#define XTREE_RBEGIN(xtree_ptr)     ((xtree_ptr)->xiter_rnode)
+#define XTREE_GET_NIL(xtree_ptr)    ((x_rbnode_iter)(&(xtree_ptr)->xnode_nil))
+#define XTREE_SET_NIL(xtree_ptr, xiter_node) \
             ((xiter_node) = (x_rbnode_iter)(&(xtree_ptr)->xnode_nil))
 
-#define X_RESET_NIL(xtree_ptr)                                              \
-            do                                                              \
-            {                                                               \
-                (xtree_ptr)->xnode_nil.xut_color = X_BLACK;                 \
-                (xtree_ptr)->xnode_nil.xut_ksize = 0;                       \
-                X_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_parent);  \
-                X_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_left  );  \
-                X_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_right );  \
-                (xtree_ptr)->xnode_nil.xower_ptr = (xtree_ptr);             \
-            } while (0)                                                     \
+#define X_RESET_NIL(xtree_ptr)                                                 \
+            do                                                                 \
+            {                                                                  \
+                (xtree_ptr)->xnode_nil.xut_color = X_BLACK;                    \
+                (xtree_ptr)->xnode_nil.xut_ksize = 0;                          \
+                XTREE_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_parent); \
+                XTREE_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_left  ); \
+                XTREE_SET_NIL(xtree_ptr, (xtree_ptr)->xnode_nil.xiter_right ); \
+                (xtree_ptr)->xnode_nil.xower_ptr = (xtree_ptr);                \
+            } while (0)                                                        \
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -296,7 +296,7 @@ static xrbt_bool_t xrbt_comm_vkey_compare(
 static x_rbnode_iter xrbtree_far_left(x_rbtree_ptr xthis_ptr,
                                       x_rbnode_iter xiter_node)
 {
-    while (X_NOT_NIL(xiter_node->xiter_left))
+    while (XNODE_NOT_NIL(xiter_node->xiter_left))
     {
         xiter_node = xiter_node->xiter_left;
     }
@@ -311,7 +311,7 @@ static x_rbnode_iter xrbtree_far_left(x_rbtree_ptr xthis_ptr,
 static x_rbnode_iter xrbtree_far_right(x_rbtree_ptr xthis_ptr,
                                        x_rbnode_iter xiter_node)
 {
-    while (X_NOT_NIL(xiter_node->xiter_right))
+    while (XNODE_NOT_NIL(xiter_node->xiter_right))
     {
         xiter_node = xiter_node->xiter_right;
     }
@@ -326,10 +326,10 @@ static x_rbnode_iter xrbtree_far_right(x_rbtree_ptr xthis_ptr,
 static xrbt_void_t xrbtree_dealloc(x_rbtree_ptr xthis_ptr,
                                    x_rbnode_iter xiter_node)
 {
-    XASSERT(X_NOT_NIL(xiter_node));
+    XASSERT(XNODE_NOT_NIL(xiter_node));
 
     xthis_ptr->xcallback.xfunc_k_destruct(
-        X_GET_VKEY(xiter_node),
+        XNODE_VKEY(xiter_node),
         xthis_ptr->xst_ksize,
         xthis_ptr->xcallback.xctxt_t_callback);
 
@@ -349,9 +349,9 @@ static xrbt_void_t xrbtree_clear_branch(x_rbtree_ptr xthis_ptr,
 #if 1
     x_rbnode_iter xiter_node = xiter_branch_root;
 
-    while (X_NOT_NIL(xiter_node))
+    while (XNODE_NOT_NIL(xiter_node))
     {
-        if (X_NOT_NIL(xiter_node->xiter_right))
+        if (XNODE_NOT_NIL(xiter_node->xiter_right))
         {
             xrbtree_clear_branch(xthis_ptr, xiter_node->xiter_right);
         }
@@ -361,13 +361,13 @@ static xrbt_void_t xrbtree_clear_branch(x_rbtree_ptr xthis_ptr,
         xiter_node = xiter_branch_root;
     }
 #else
-    if (X_IS_NIL(xiter_branch_root))
+    if (XNODE_IS_NIL(xiter_branch_root))
         return;
 
-    if (X_NOT_NIL(xiter_branch_root->xiter_left))
+    if (XNODE_NOT_NIL(xiter_branch_root->xiter_left))
         xrbtree_clear_branch(xthis_ptr, xiter_branch_root->xiter_left);
 
-    if (X_NOT_NIL(xiter_branch_root->xiter_right))
+    if (XNODE_NOT_NIL(xiter_branch_root->xiter_right))
         xrbtree_clear_branch(xthis_ptr, xiter_branch_root->xiter_right);
 
     xrbtree_dealloc(xthis_ptr, xiter_branch_root);
@@ -383,12 +383,13 @@ static x_rbnode_iter xrbtree_successor(x_rbtree_ptr xthis_ptr,
 {
     x_rbnode_iter xiter_parent = xiter_node->xiter_parent;
 
-    if (X_NOT_NIL(xiter_node->xiter_right))
+    if (XNODE_NOT_NIL(xiter_node->xiter_right))
     {
         return xrbtree_far_left(xthis_ptr, xiter_node->xiter_right);
     }
 
-    while (X_NOT_NIL(xiter_parent) && (xiter_parent->xiter_right == xiter_node))
+    while (XNODE_NOT_NIL(xiter_parent) &&
+           (xiter_parent->xiter_right == xiter_node))
     {
         xiter_node   = xiter_parent;
         xiter_parent = xiter_parent->xiter_parent;
@@ -406,12 +407,13 @@ static x_rbnode_iter xrbtree_precursor(x_rbtree_ptr xthis_ptr,
 {
     x_rbnode_iter xiter_parent = xiter_node->xiter_parent;
 
-    if (X_NOT_NIL(xiter_node->xiter_left))
+    if (XNODE_NOT_NIL(xiter_node->xiter_left))
     {
         return xrbtree_far_right(xthis_ptr, xiter_node->xiter_left);
     }
 
-    while (X_NOT_NIL(xiter_parent) && (xiter_parent->xiter_left == xiter_node))
+    while (XNODE_NOT_NIL(xiter_parent) &&
+           (xiter_parent->xiter_left == xiter_node))
     {
         xiter_node   = xiter_parent;
         xiter_parent = xiter_parent->xiter_parent;
@@ -430,13 +432,13 @@ static xrbt_void_t xrbtree_left_rotate(x_rbtree_ptr xthis_ptr,
     x_rbnode_iter xiter_swap = xiter_node->xiter_right;
 
     xiter_node->xiter_right = xiter_swap->xiter_left;
-    if (X_NOT_NIL(xiter_swap->xiter_left))
+    if (XNODE_NOT_NIL(xiter_swap->xiter_left))
     {
         xiter_swap->xiter_left->xiter_parent = xiter_node;
     }
 
     xiter_swap->xiter_parent = xiter_node->xiter_parent;
-    if (X_IS_NIL(xiter_node->xiter_parent))
+    if (XNODE_IS_NIL(xiter_node->xiter_parent))
     {
         xthis_ptr->xiter_root = xiter_swap;
     }
@@ -463,13 +465,13 @@ static xrbt_void_t xrbtree_right_rotate(x_rbtree_ptr xthis_ptr,
     x_rbnode_iter xiter_swap = xiter_node->xiter_left;
 
     xiter_node->xiter_left = xiter_swap->xiter_right;
-    if (X_NOT_NIL(xiter_swap->xiter_right))
+    if (XNODE_NOT_NIL(xiter_swap->xiter_right))
     {
         xiter_swap->xiter_right->xiter_parent = xiter_node;
     }
 
     xiter_swap->xiter_parent = xiter_node->xiter_parent;
-    if (X_IS_NIL(xiter_node->xiter_parent))
+    if (XNODE_IS_NIL(xiter_node->xiter_parent))
     {
         xthis_ptr->xiter_root = xiter_swap;
     }
@@ -493,7 +495,7 @@ static xrbt_void_t xrbtree_right_rotate(x_rbtree_ptr xthis_ptr,
 static xrbt_void_t xrbtree_dock_fixup(x_rbtree_ptr xthis_ptr,
                                       x_rbnode_iter xiter_where)
 {
-    x_rbnode_iter xiter_uncle = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_uncle = XTREE_GET_NIL(xthis_ptr);
 
     // xiter_where ---> X_RED
     while (X_RED == xiter_where->xiter_parent->xut_color)
@@ -562,7 +564,7 @@ static xrbt_void_t xrbtree_undock_fixup(
                                 x_rbnode_iter xiter_where,
                                 x_rbnode_iter xiter_parent)
 {
-    x_rbnode_iter xiter_sibling = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_sibling = XTREE_GET_NIL(xthis_ptr);
 
     for (; (xiter_where != xthis_ptr->xiter_root) &&
            (X_BLACK == xiter_where->xut_color);
@@ -579,7 +581,7 @@ static xrbt_void_t xrbtree_undock_fixup(
                 xiter_sibling = xiter_parent->xiter_right;
             }
 
-            if (X_IS_NIL(xiter_sibling))
+            if (XNODE_IS_NIL(xiter_sibling))
             {
                 xiter_where = xiter_parent;
             }
@@ -617,7 +619,7 @@ static xrbt_void_t xrbtree_undock_fixup(
                 xiter_sibling = xiter_parent->xiter_left;
             }
 
-            if (X_IS_NIL(xiter_sibling))
+            if (XNODE_IS_NIL(xiter_sibling))
             {
                 xiter_where = xiter_parent;
             }
@@ -682,10 +684,10 @@ static xrbt_void_t xrbtree_update(x_rbtree_ptr xthis_ptr,
 
         xthis_ptr->xst_count += 1;
 
-        if (X_IS_NIL(xthis_ptr->xiter_lnode) ||
-            xthis_ptr->xcallback.xfunc_k_lesscomp(
-                                  X_GET_VKEY(xiter_where),
-                                  X_GET_VKEY(xthis_ptr->xiter_lnode),
+        if (XNODE_IS_NIL(xthis_ptr->xiter_lnode) ||
+            xthis_ptr->xcallback.xfunc_k_compare(
+                                  XNODE_VKEY(xiter_where),
+                                  XNODE_VKEY(xthis_ptr->xiter_lnode),
                                   xthis_ptr->xst_ksize,
                                   xthis_ptr->xcallback.xctxt_t_callback)
            )
@@ -693,10 +695,10 @@ static xrbt_void_t xrbtree_update(x_rbtree_ptr xthis_ptr,
             xthis_ptr->xiter_lnode = xiter_where;
         }
 
-        if (X_IS_NIL(xthis_ptr->xiter_rnode) ||
-            xthis_ptr->xcallback.xfunc_k_lesscomp(
-                                  X_GET_VKEY(xthis_ptr->xiter_rnode),
-                                  X_GET_VKEY(xiter_where),
+        if (XNODE_IS_NIL(xthis_ptr->xiter_rnode) ||
+            xthis_ptr->xcallback.xfunc_k_compare(
+                                  XNODE_VKEY(xthis_ptr->xiter_rnode),
+                                  XNODE_VKEY(xiter_where),
                                   xthis_ptr->xst_ksize,
                                   xthis_ptr->xcallback.xctxt_t_callback)
            )
@@ -726,17 +728,17 @@ static x_rbnode_iter xrbtree_dock_pos(x_rbtree_ptr xthis_ptr,
                                       xrbt_vkey_t xrbt_vkey,
                                       xrbt_int32_t * xit_select)
 {
-    x_rbnode_iter xiter_where = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_where = XTREE_GET_NIL(xthis_ptr);
     x_rbnode_iter xiter_ntrav = xthis_ptr->xiter_root;
     xrbt_bool_t   xbt_to_left = XRBT_TRUE;
 
-    while (X_NOT_NIL(xiter_ntrav))
+    while (XNODE_NOT_NIL(xiter_ntrav))
     {
         xiter_where = xiter_ntrav;
 
-        xbt_to_left = xthis_ptr->xcallback.xfunc_k_lesscomp(
+        xbt_to_left = xthis_ptr->xcallback.xfunc_k_compare(
                                      xrbt_vkey,
-                                     X_GET_VKEY(xiter_ntrav),
+                                     XNODE_VKEY(xiter_ntrav),
                                      xthis_ptr->xst_ksize,
                                      xthis_ptr->xcallback.xctxt_t_callback);
 
@@ -748,7 +750,7 @@ static x_rbnode_iter xrbtree_dock_pos(x_rbtree_ptr xthis_ptr,
     {
         *xit_select = -1;
 
-        if (xiter_ntrav == X_BEGIN(xthis_ptr))
+        if (xiter_ntrav == XTREE_BEGIN(xthis_ptr))
             return xiter_where;
         else
             xiter_ntrav = xrbtree_precursor(xthis_ptr, xiter_ntrav);
@@ -758,8 +760,8 @@ static x_rbnode_iter xrbtree_dock_pos(x_rbtree_ptr xthis_ptr,
         *xit_select = 1;
     }
 
-    if (xthis_ptr->xcallback.xfunc_k_lesscomp(
-                              X_GET_VKEY(xiter_ntrav),
+    if (xthis_ptr->xcallback.xfunc_k_compare(
+                              XNODE_VKEY(xiter_ntrav),
                               xrbt_vkey,
                               xthis_ptr->xst_ksize,
                               xthis_ptr->xcallback.xctxt_t_callback))
@@ -790,7 +792,7 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
 {
     //======================================
 
-    x_rbnode_iter xiter_node = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_node = XTREE_GET_NIL(xthis_ptr);
     xrbt_int32_t  xit_select = -1;
     x_rbnode_iter xiter_dpos = xrbtree_dock_pos(xthis_ptr,
                                                 xrbt_vkey,
@@ -811,7 +813,7 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
     XASSERT(XRBT_NULL != xiter_node);
 
     xthis_ptr->xcallback.xfunc_k_copyfrom(
-                                    X_GET_VKEY(xiter_node),
+                                    XNODE_VKEY(xiter_node),
                                     xrbt_vkey,
                                     xthis_ptr->xst_ksize,
                                     xbt_move,
@@ -820,7 +822,7 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
     //======================================
 
     xiter_node->xiter_parent = xiter_dpos;
-    if (X_IS_NIL(xiter_dpos))
+    if (XNODE_IS_NIL(xiter_dpos))
     {
         xthis_ptr->xiter_root = xiter_node;
     }
@@ -835,8 +837,8 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
 
     xiter_node->xut_color = X_RED;
     xiter_node->xut_ksize = xthis_ptr->xst_ksize;
-    X_SET_NIL(xthis_ptr, xiter_node->xiter_left);
-    X_SET_NIL(xthis_ptr, xiter_node->xiter_right);
+    XTREE_SET_NIL(xthis_ptr, xiter_node->xiter_left);
+    XTREE_SET_NIL(xthis_ptr, xiter_node->xiter_right);
 
     xrbtree_dock_fixup(xthis_ptr, xiter_node);
 
@@ -860,10 +862,13 @@ static x_rbnode_iter xrbtree_insert_nkey(x_rbtree_ptr xthis_ptr,
 /**********************************************************/
 /**
  * @brief 创建 x_rbtree_t 对象。
- *
+ * @note
+ * xcallback 会在红黑树对象内部另有缓存保存所设置的参数，外部无须持续保留；
+ * 若某个回调函数为 XRBT_NULL，则取内部默认值。
+ * 
  * @param [in ] xst_ksize : 索引键数据类型所需的缓存大小（如 sizeof 值）。
- * @param [in ] xcallback : 节点操作的相关回调函数（若某个回调函数为 XRBT_NULL，则取内部默认值）。
- *
+ * @param [in ] xcallback : 节点操作的相关回调函数。
+ * 
  * @return x_rbtree_ptr
  *         - 成功，返回 x_rbtree_t 对象；
  *         - 失败，返回 XRBT_NULL；
@@ -894,8 +899,8 @@ x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback)
         XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_destruct,
                        xcallback->xfunc_k_destruct,
                        &xrbt_comm_vkey_destruct);
-        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_lesscomp,
-                       xcallback->xfunc_k_lesscomp,
+        XFUC_CHECK_SET(xthis_ptr->xcallback.xfunc_k_compare,
+                       xcallback->xfunc_k_compare,
                        &xrbt_comm_vkey_compare);
 
         xthis_ptr->xcallback.xctxt_t_callback = xcallback->xctxt_t_callback;
@@ -906,7 +911,7 @@ x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback)
         xthis_ptr->xcallback.xfunc_n_memfree  = &xrbt_comm_node_memfree ;
         xthis_ptr->xcallback.xfunc_k_copyfrom = &xrbt_comm_vkey_copyfrom;
         xthis_ptr->xcallback.xfunc_k_destruct = &xrbt_comm_vkey_destruct;
-        xthis_ptr->xcallback.xfunc_k_lesscomp = &xrbt_comm_vkey_compare ;
+        xthis_ptr->xcallback.xfunc_k_compare  = &xrbt_comm_vkey_compare ;
         xthis_ptr->xcallback.xctxt_t_callback = XRBT_NULL;
     }
 
@@ -916,9 +921,9 @@ x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback)
 
     xthis_ptr->xst_ksize = xst_ksize;
     xthis_ptr->xst_count = 0;
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_root );
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_lnode);
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_rnode);
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_root );
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_lnode);
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_rnode);
 
     return xthis_ptr;
 }
@@ -947,9 +952,9 @@ xrbt_void_t xrbtree_clear(x_rbtree_ptr xthis_ptr)
     X_RESET_NIL(xthis_ptr);
 
     xthis_ptr->xst_count = 0;
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_root );
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_lnode);
-    X_SET_NIL(xthis_ptr, xthis_ptr->xiter_rnode);
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_root );
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_lnode);
+    XTREE_SET_NIL(xthis_ptr, xthis_ptr->xiter_rnode);
 }
 
 /**********************************************************/
@@ -981,7 +986,7 @@ xrbt_size_t xrbtree_left_length(x_rbtree_ptr xthis_ptr)
     XASSERT(XRBT_NULL != xthis_ptr);
 
     xrbt_size_t   xst_length = 0;
-    x_rbnode_iter xiter_node = X_BEGIN(xthis_ptr);
+    x_rbnode_iter xiter_node = XTREE_BEGIN(xthis_ptr);
 
     while (xiter_node != xthis_ptr->xiter_root)
     {
@@ -1001,7 +1006,7 @@ xrbt_size_t xrbtree_right_length(x_rbtree_ptr xthis_ptr)
     XASSERT(XRBT_NULL != xthis_ptr);
 
     xrbt_size_t   xst_length = 0;
-    x_rbnode_iter xiter_node = X_RBEGIN(xthis_ptr);
+    x_rbnode_iter xiter_node = XTREE_RBEGIN(xthis_ptr);
 
     while (xiter_node != xthis_ptr->xiter_root)
     {
@@ -1063,7 +1068,7 @@ x_rbnode_iter xrbtree_insert_mkey(x_rbtree_ptr xthis_ptr,
 xrbt_void_t xrbtree_erase(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
     XASSERT(xrbtree_iter_tree(xiter_node) == xthis_ptr);
 
     xrbtree_dealloc(xthis_ptr, xrbtree_undock(xthis_ptr, xiter_node));
@@ -1079,7 +1084,7 @@ xrbt_bool_t xrbtree_erase_vkey(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey)
     XASSERT(XRBT_NULL != xrbt_vkey);
 
     x_rbnode_iter xiter_node = xrbtree_find(xthis_ptr, xrbt_vkey);
-    if (X_IS_NIL(xiter_node))
+    if (XNODE_IS_NIL(xiter_node))
     {
         return XRBT_FALSE;
     }
@@ -1106,15 +1111,15 @@ xrbt_bool_t xrbtree_erase_vkey(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey)
 x_rbnode_iter xrbtree_dock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
-    XASSERT(X_IS_UNDOCKED(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
+    XASSERT(XNODE_IS_UNDOCKED(xiter_node));
     XASSERT(xiter_node->xut_ksize == xthis_ptr->xst_ksize);
 
     //======================================
 
     xrbt_int32_t  xit_select  = -1;
     x_rbnode_iter xiter_where = xrbtree_dock_pos(xthis_ptr,
-                                                 X_GET_VKEY(xiter_node),
+                                                 XNODE_VKEY(xiter_node),
                                                  &xit_select);
 
     if (0 == xit_select)
@@ -1125,7 +1130,7 @@ x_rbnode_iter xrbtree_dock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
     //======================================
 
     xiter_node->xiter_parent = xiter_where;
-    if (X_IS_NIL(xiter_where))
+    if (XNODE_IS_NIL(xiter_where))
     {
         xthis_ptr->xiter_root = xiter_node;
     }
@@ -1139,8 +1144,8 @@ x_rbnode_iter xrbtree_dock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
     }
 
     xiter_node->xut_color = X_RED;
-    X_SET_NIL(xthis_ptr, xiter_node->xiter_left );
-    X_SET_NIL(xthis_ptr, xiter_node->xiter_right);
+    XTREE_SET_NIL(xthis_ptr, xiter_node->xiter_left );
+    XTREE_SET_NIL(xthis_ptr, xiter_node->xiter_right);
 
     //======================================
 
@@ -1166,19 +1171,19 @@ x_rbnode_iter xrbtree_dock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
 x_rbnode_iter xrbtree_undock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
     XASSERT(xrbtree_iter_tree(xiter_node) == xthis_ptr);
 
-    x_rbnode_iter xiter_fixup  = X_GET_NIL(xthis_ptr);
-    x_rbnode_iter xiter_parent = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_fixup  = XTREE_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_parent = XTREE_GET_NIL(xthis_ptr);
     x_rbnode_iter xiter_where  = xiter_node;
     x_rbnode_iter xiter_ntrav  = xiter_where;
 
-    if (X_IS_NIL(xiter_ntrav->xiter_left))
+    if (XNODE_IS_NIL(xiter_ntrav->xiter_left))
     {
         xiter_fixup = xiter_ntrav->xiter_right;
     }
-    else if (X_IS_NIL(xiter_ntrav->xiter_right))
+    else if (XNODE_IS_NIL(xiter_ntrav->xiter_right))
     {
         xiter_fixup = xiter_ntrav->xiter_left;
     }
@@ -1191,7 +1196,7 @@ x_rbnode_iter xrbtree_undock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
     if (xiter_ntrav == xiter_where)
     {
         xiter_parent = xiter_where->xiter_parent;
-        if (X_NOT_NIL(xiter_fixup))
+        if (XNODE_NOT_NIL(xiter_fixup))
             xiter_fixup->xiter_parent = xiter_parent;
 
         if (xthis_ptr->xiter_root == xiter_where)
@@ -1219,7 +1224,7 @@ x_rbnode_iter xrbtree_undock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
         else
         {
             xiter_parent = xiter_ntrav->xiter_parent;
-            if (X_NOT_NIL(xiter_fixup))
+            if (XNODE_NOT_NIL(xiter_fixup))
             {
                 xiter_fixup->xiter_parent = xiter_parent;
             }
@@ -1247,8 +1252,8 @@ x_rbnode_iter xrbtree_undock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
         // recolor it (swap color)
         if (xiter_ntrav->xut_color != xiter_where->xut_color)
         {
-            X_SPIN_CLR(xiter_ntrav);
-            X_SPIN_CLR(xiter_where);
+            XNODE_SPIN_CLR(xiter_ntrav);
+            XNODE_SPIN_CLR(xiter_where);
         }
     }
 
@@ -1258,6 +1263,8 @@ x_rbnode_iter xrbtree_undock(x_rbtree_ptr xthis_ptr, x_rbnode_iter xiter_node)
     }
 
     xrbtree_update(xthis_ptr, xiter_where, XRBT_TRUE);
+
+    XNODE_UNDOCK(xiter_where);
 
     return xiter_where;
 }
@@ -1273,15 +1280,15 @@ x_rbnode_iter xrbtree_find(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey)
 
     x_rbnode_iter xiter_node = xrbtree_lower_bound(xthis_ptr, xrbt_vkey);
 
-    if (X_IS_NIL(xiter_node) ||
-        xthis_ptr->xcallback.xfunc_k_lesscomp(
+    if (XNODE_IS_NIL(xiter_node) ||
+        xthis_ptr->xcallback.xfunc_k_compare(
                               xrbt_vkey,
-                              X_GET_VKEY(xiter_node),
+                              XNODE_VKEY(xiter_node),
                               xthis_ptr->xst_ksize,
                               xthis_ptr->xcallback.xctxt_t_callback)
        )
     {
-        return X_GET_NIL(xthis_ptr);
+        return XTREE_GET_NIL(xthis_ptr);
     }
 
     return xiter_node;
@@ -1289,21 +1296,20 @@ x_rbnode_iter xrbtree_find(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey)
 
 /**********************************************************/
 /**
- * @brief 在 x_rbtree_t 对象中查找下边界节点。
- * @note  若返回 NIL 则表示 xrbt_vkey < 正向起始节点的索引键值。
+ * @brief 返回的是首个不小于 指定索引键值 的 节点位置。
  */
 x_rbnode_iter xrbtree_lower_bound(x_rbtree_ptr xthis_ptr,
                                   xrbt_vkey_t xrbt_vkey)
 {
     XASSERT((XRBT_NULL != xthis_ptr) && (XRBT_NULL != xrbt_vkey));
 
-    x_rbnode_iter xiter_node = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_node = XTREE_GET_NIL(xthis_ptr);
     x_rbnode_iter xiter_trav = xthis_ptr->xiter_root;
 
-    while (X_NOT_NIL(xiter_trav))
+    while (XNODE_NOT_NIL(xiter_trav))
     {
-        if (xthis_ptr->xcallback.xfunc_k_lesscomp(
-                                  X_GET_VKEY(xiter_trav),
+        if (xthis_ptr->xcallback.xfunc_k_compare(
+                                  XNODE_VKEY(xiter_trav),
                                   xrbt_vkey,
                                   xthis_ptr->xst_ksize,
                                   xthis_ptr->xcallback.xctxt_t_callback))
@@ -1322,22 +1328,21 @@ x_rbnode_iter xrbtree_lower_bound(x_rbtree_ptr xthis_ptr,
 
 /**********************************************************/
 /**
- * @brief 在 x_rbtree_t 对象中查找上边界节点。
- * @note  若返回 NIL 则表示 xrbt_vkey > 反向起始节点的索引键值。
+ * @brief 返回的是首个大于 指定索引键值 的 节点位置。
  */
 x_rbnode_iter xrbtree_upper_bound(x_rbtree_ptr xthis_ptr,
                                   xrbt_vkey_t xrbt_vkey)
 {
     XASSERT((XRBT_NULL != xthis_ptr) && (XRBT_NULL != xrbt_vkey));
 
-    x_rbnode_iter xiter_node = X_GET_NIL(xthis_ptr);
+    x_rbnode_iter xiter_node = XTREE_GET_NIL(xthis_ptr);
     x_rbnode_iter xiter_trav = xthis_ptr->xiter_root;
 
-    while (X_NOT_NIL(xiter_trav))
+    while (XNODE_NOT_NIL(xiter_trav))
     {
-        if (xthis_ptr->xcallback.xfunc_k_lesscomp(
+        if (xthis_ptr->xcallback.xfunc_k_compare(
                                   xrbt_vkey,
-                                  X_GET_VKEY(xiter_trav),
+                                  XNODE_VKEY(xiter_trav),
                                   xthis_ptr->xst_ksize,
                                   xthis_ptr->xcallback.xctxt_t_callback))
         {
@@ -1370,7 +1375,7 @@ x_rbnode_iter xrbtree_root(x_rbtree_ptr xthis_ptr)
 x_rbnode_iter xrbtree_begin(x_rbtree_ptr xthis_ptr)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    return X_BEGIN(xthis_ptr);
+    return XTREE_BEGIN(xthis_ptr);
 }
 
 /**********************************************************/
@@ -1380,7 +1385,7 @@ x_rbnode_iter xrbtree_begin(x_rbtree_ptr xthis_ptr)
 x_rbnode_iter xrbtree_end(x_rbtree_ptr xthis_ptr)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    return X_GET_NIL(xthis_ptr);
+    return XTREE_GET_NIL(xthis_ptr);
 }
 
 /**********************************************************/
@@ -1389,8 +1394,8 @@ x_rbnode_iter xrbtree_end(x_rbtree_ptr xthis_ptr)
  */
 x_rbnode_iter xrbtree_next(x_rbnode_iter xiter_node)
 {
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
-    XASSERT(X_IS_DOCKED(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
+    XASSERT(XNODE_IS_DOCKED(xiter_node));
     return xrbtree_successor(XRBT_NULL, xiter_node);
 }
 
@@ -1401,7 +1406,7 @@ x_rbnode_iter xrbtree_next(x_rbnode_iter xiter_node)
 x_rbnode_iter xrbtree_rbegin(x_rbtree_ptr xthis_ptr)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    return X_RBEGIN(xthis_ptr);
+    return XTREE_RBEGIN(xthis_ptr);
 }
 
 /**********************************************************/
@@ -1411,7 +1416,7 @@ x_rbnode_iter xrbtree_rbegin(x_rbtree_ptr xthis_ptr)
 x_rbnode_iter xrbtree_rend(x_rbtree_ptr xthis_ptr)
 {
     XASSERT(XRBT_NULL != xthis_ptr);
-    return X_GET_NIL(xthis_ptr);
+    return XTREE_GET_NIL(xthis_ptr);
 }
 
 /**********************************************************/
@@ -1420,8 +1425,8 @@ x_rbnode_iter xrbtree_rend(x_rbtree_ptr xthis_ptr)
  */
 x_rbnode_iter xrbtree_rnext(x_rbnode_iter xiter_node)
 {
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
-    XASSERT(X_IS_DOCKED(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
+    XASSERT(XNODE_IS_DOCKED(xiter_node));
     return xrbtree_precursor(XRBT_NULL, xiter_node);
 }
 
@@ -1431,8 +1436,8 @@ x_rbnode_iter xrbtree_rnext(x_rbnode_iter xiter_node)
  */
 xrbt_vkey_t xrbtree_iter_vkey(x_rbnode_iter xiter_node)
 {
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
-    return X_GET_VKEY(xiter_node);
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
+    return XNODE_VKEY(xiter_node);
 }
 
 /**********************************************************/
@@ -1442,7 +1447,7 @@ xrbt_vkey_t xrbtree_iter_vkey(x_rbnode_iter xiter_node)
 xrbt_bool_t xrbtree_iter_is_nil(x_rbnode_iter xiter_node)
 {
     XASSERT(XRBT_NULL != xiter_node);
-    return X_IS_NIL(xiter_node);
+    return XNODE_IS_NIL(xiter_node);
 }
 
 /**********************************************************/
@@ -1451,8 +1456,8 @@ xrbt_bool_t xrbtree_iter_is_nil(x_rbnode_iter xiter_node)
  */
 xrbt_bool_t xrbtree_iter_is_undocked(x_rbnode_iter xiter_node)
 {
-    XASSERT((XRBT_NULL != xiter_node) && X_NOT_NIL(xiter_node));
-    return X_IS_UNDOCKED(xiter_node);
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_NOT_NIL(xiter_node));
+    return XNODE_IS_UNDOCKED(xiter_node);
 }
 
 /**********************************************************/
@@ -1462,18 +1467,18 @@ xrbt_bool_t xrbtree_iter_is_undocked(x_rbnode_iter xiter_node)
  */
 x_rbtree_ptr xrbtree_iter_tree(x_rbnode_iter xiter_node)
 {
-    XASSERT((XRBT_NULL != xiter_node) && X_IS_DOCKED(xiter_node));
-    XASSERT(X_IS_DOCKED(xiter_node));
+    XASSERT((XRBT_NULL != xiter_node) && XNODE_IS_DOCKED(xiter_node));
+    XASSERT(XNODE_IS_DOCKED(xiter_node));
 
-    while (X_NOT_NIL(xiter_node))
+    while (XNODE_NOT_NIL(xiter_node))
     {
-        if (X_IS_NIL(xiter_node->xiter_parent))
+        if (XNODE_IS_NIL(xiter_node->xiter_parent))
         {
             xiter_node = xiter_node->xiter_parent;
             break;
         }
 
-        if (X_IS_NIL(xiter_node->xiter_right))
+        if (XNODE_IS_NIL(xiter_node->xiter_right))
         {
             xiter_node = xiter_node->xiter_right;
             break;

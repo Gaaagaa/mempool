@@ -147,7 +147,7 @@ typedef struct x_rbtree_node_callback_t
     xfunc_node_memfree_t  xfunc_n_memfree ; ///< 释放节点对象缓存的回调接口
     xfunc_vkey_copyfrom_t xfunc_k_copyfrom; ///< 拷贝节点对象的索引键值的回调操作接口
     xfunc_vkey_destruct_t xfunc_k_destruct; ///< 析构节点对象的索引键值的回调操作接口
-    xfunc_vkey_compare_t  xfunc_k_lesscomp; ///< 比较节点索引键值的回调接口
+    xfunc_vkey_compare_t  xfunc_k_compare ; ///< 比较节点索引键值的回调接口
     xrbt_ctxt_t           xctxt_t_callback; ///< 回调的上下文标识
 } xrbt_callback_t;
 
@@ -160,9 +160,12 @@ typedef struct x_rbtree_node_callback_t
 /**********************************************************/
 /**
  * @brief 创建 x_rbtree_t 对象。
+ * @note
+ * xcallback 会在红黑树对象内部另有缓存保存所设置的参数，外部无须持续保留；
+ * 若某个回调函数为 XRBT_NULL，则取内部默认值。
  * 
  * @param [in ] xst_ksize : 索引键数据类型所需的缓存大小（如 sizeof 值）。
- * @param [in ] xcallback : 节点操作的相关回调函数（若某个回调函数为 XRBT_NULL，则取内部默认值）。
+ * @param [in ] xcallback : 节点操作的相关回调函数。
  * 
  * @return x_rbtree_ptr
  *         - 成功，返回 x_rbtree_t 对象；
@@ -286,15 +289,13 @@ x_rbnode_iter xrbtree_find(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey);
 
 /**********************************************************/
 /**
- * @brief 在 x_rbtree_t 对象中查找下边界节点。
- * @note  若返回 NIL 则表示 xrbt_vkey < 正向起始节点的索引键值。
+ * @brief 返回的是首个不小于 指定索引键值 的 节点位置。
  */
 x_rbnode_iter xrbtree_lower_bound(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey);
 
 /**********************************************************/
 /**
- * @brief 在 x_rbtree_t 对象中查找上边界节点。
- * @note  若返回 NIL 则表示 xrbt_vkey > 反向起始节点的索引键值。
+ * @brief 返回的是首个大于 指定索引键值 的 节点位置。
  */
 x_rbnode_iter xrbtree_upper_bound(x_rbtree_ptr xthis_ptr, xrbt_vkey_t xrbt_vkey);
 
@@ -495,7 +496,7 @@ inline xrbt_callback_t xrbtree_default_callback(xrbt_ctxt_t xrbt_ctxt)
         /* .xfunc_n_memfree  = */ XRBT_NULL,
         /* .xfunc_k_copyfrom = */ &xrbtree_vkey_copyfrom< _Kty >,
         /* .xfunc_k_destruct = */ &xrbtree_vkey_destruct< _Kty >,
-        /* .xfunc_k_lesscomp = */ &xrbtree_vkey_compare< _Kty >,
+        /* .xfunc_k_compare  = */ &xrbtree_vkey_compare< _Kty >,
         /* .xctxt_t_callback = */ xrbt_ctxt
     };
 
@@ -546,13 +547,15 @@ inline x_rbnode_iter xrbtree_find_k(x_rbtree_ptr xthis_ptr, const _Kty & xkey)
 }
 
 template< class _Kty >
-inline x_rbnode_iter xrbtree_lower_bound_k(x_rbtree_ptr xthis_ptr, const _Kty & xkey)
+inline x_rbnode_iter xrbtree_lower_bound_k(x_rbtree_ptr xthis_ptr,
+                                           const _Kty & xkey)
 {
     return xrbtree_lower_bound(xthis_ptr, const_cast< _Kty * >(&xkey));
 }
 
 template< class _Kty >
-inline x_rbnode_iter xrbtree_upper_bound_k(x_rbtree_ptr xthis_ptr, const _Kty & xkey)
+inline x_rbnode_iter xrbtree_upper_bound_k(x_rbtree_ptr xthis_ptr,
+                                           const _Kty & xkey)
 {
     return xrbtree_upper_bound(xthis_ptr, const_cast< _Kty * >(&xkey));
 }
