@@ -5,26 +5,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <assert.h>
 #include <chrono>
+
+#ifdef _MSC_VER
+#include <windows.h>
+#else // !_MSC_VER
+#include <unistd.h>
+#include <sys/mman.h>
+#endif // _MSC_VER
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef ENABLE_XASSERT
-#if ((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 1
-#else // !((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 0
-#endif // ((defined _DEBUG) || (defined DEBUG))
-#endif // ENABLE_XASSERT
-
-#ifndef XASSERT
-#if ENABLE_XASSERT
-#include <assert.h>
-#define XASSERT(xptr)    assert(xptr)
-#else // !ENABLE_XASSERT
-#define XASSERT(xptr)
-#endif // ENABLE_XASSERT
-#endif // XASSERT
+#define XVERIFY(xptr) do { if (!(xptr)) assert(0); } while (0)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +26,26 @@ using xtime_point = std::chrono::system_clock::time_point;
 using xtime_value = std::chrono::microseconds;
 
 #define xtime_dcast std::chrono::duration_cast< xtime_value >
+
+////////////////////////////////////////////////////////////////////////////////
+
+x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_context)
+{
+#ifdef _MSC_VER
+    return HeapAlloc(GetProcessHeap(), 0, xst_size);
+#else // !_MSC_VER
+    return mmap(X_NULL, xst_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif // _MSC_VER
+}
+
+x_void_t heap_free(x_void_t * xmt_heap, x_size_t xst_size, x_handle_t xht_context)
+{
+#ifdef _MSC_VER
+    HeapFree(GetProcessHeap(), 0, xmt_heap);
+#else // !_MSC_VER
+    munmap(xmt_heap, xst_size);
+#endif // _MSC_VER
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +58,7 @@ void test_xmpool1(x_int32_t xit_test_count, x_int32_t xit_test_size)
     xtime_value xtm_value;
 
     xmem_slice_t    xmem_slice = X_NULL;
-    xmpool_handle_t xmpool_ptr = xmpool_create(X_NULL, X_NULL, X_NULL);
+    xmpool_handle_t xmpool_ptr = xmpool_create(&heap_alloc, &heap_free, X_NULL);
 
     //======================================
 
@@ -55,9 +68,9 @@ void test_xmpool1(x_int32_t xit_test_count, x_int32_t xit_test_size)
         for (xit_jter = 1; xit_jter <= xit_test_size; ++xit_jter)
         {
             xmem_slice = xmpool_alloc(xmpool_ptr, xit_jter);
-            XASSERT(X_NULL != xmem_slice);
+            assert(X_NULL != xmem_slice);
             xmem_slice[0] = (x_byte_t)xit_jter;
-            xmpool_recyc(xmpool_ptr, xmem_slice);
+            XVERIFY(XMEM_ERR_OK == xmpool_recyc(xmpool_ptr, xmem_slice));
         }
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
@@ -86,7 +99,7 @@ void test_malloc1(x_int32_t xit_test_count, x_int32_t xit_test_size)
         for (xit_jter = 1; xit_jter <= xit_test_size; ++xit_jter)
         {
             xmem_slice = (xmem_slice_t)malloc(xit_jter);
-            XASSERT(X_NULL != xmem_slice);
+            assert(X_NULL != xmem_slice);
             xmem_slice[0] = (x_byte_t)xit_jter;
             free(xmem_slice);
         }
@@ -109,7 +122,7 @@ void test_xmpool2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
     xtime_value xtm_value;
 
     xmem_slice_t  * xmem_slice = (xmem_slice_t *)calloc(xit_alloc_count, sizeof(xmem_slice_t));
-    xmpool_handle_t xmpool_ptr = xmpool_create(X_NULL, X_NULL, X_NULL);
+    xmpool_handle_t xmpool_ptr = xmpool_create(&heap_alloc, &heap_free, X_NULL);
 
     //======================================
 
@@ -121,16 +134,14 @@ void test_xmpool2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
             for (xit_kter = 0; xit_kter < xit_alloc_count; ++xit_kter)
             {
                 xmem_slice[xit_kter] = xmpool_alloc(xmpool_ptr, xit_jter);
+                assert(X_NULL != xmem_slice[xit_kter]);
             }
 
             for (xit_kter = 0; xit_kter < xit_alloc_count; ++xit_kter)
             {
-                if (X_NULL != xmem_slice[xit_kter])
-                {
-                    xmem_slice[xit_kter][0] = (x_byte_t)xit_jter;
-                    xmpool_recyc(xmpool_ptr, xmem_slice[xit_kter]);
-                    xmem_slice[xit_kter] = X_NULL;
-                }
+                xmem_slice[xit_kter][0] = (x_byte_t)xit_jter;
+                XVERIFY(XMEM_ERR_OK == xmpool_recyc(xmpool_ptr, xmem_slice[xit_kter]));
+                xmem_slice[xit_kter] = X_NULL;
             }
         }
     }
@@ -164,16 +175,14 @@ void test_malloc2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
             for (xit_kter = 0; xit_kter < xit_alloc_count; ++xit_kter)
             {
                 xmem_slice[xit_kter] = (xmem_slice_t)malloc(xit_jter);
+                assert(X_NULL != xmem_slice[xit_kter]);
             }
 
             for (xit_kter = 0; xit_kter < xit_alloc_count; ++xit_kter)
             {
-                if (X_NULL != xmem_slice[xit_kter])
-                {
-                    xmem_slice[xit_kter][0] = (x_byte_t)xit_jter;
-                    free(xmem_slice[xit_kter]);
-                    xmem_slice[xit_kter] = X_NULL;
-                }
+                xmem_slice[xit_kter][0] = (x_byte_t)xit_jter;
+                free(xmem_slice[xit_kter]);
+                xmem_slice[xit_kter] = X_NULL;
             }
         }
     }
