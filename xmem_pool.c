@@ -26,6 +26,20 @@
 #include <stdlib.h>
 #include <memory.h>
 
+#ifdef _MSC_VER
+
+#include <windows.h>
+
+#else // !_MSC_VER
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+
+#define gettid() syscall(__NR_gettid)
+
+#endif // _MSC_VER
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef ENABLE_XASSERT
@@ -62,9 +76,13 @@
 
 struct xmem_chunk_t;
 struct xmem_class_t;
+struct xslice_array_t;
+struct xslice_rqueue_t;
 
-typedef struct xmem_chunk_t * xchunk_handle_t;
-typedef struct xmem_class_t * xclass_handle_t;
+typedef struct xmem_chunk_t    * xchunk_handle_t;
+typedef struct xmem_class_t    * xclass_handle_t;
+typedef struct xslice_array_t  * xslice_arrptr_t;
+typedef struct xslice_rqueue_t * xsrque_handle_t;
 
 #define XMEM_RBNODE_SIZE    (5 * sizeof(x_handle_t))
 #define XMEM_PAGE_SIZE      (1024 * 4)
@@ -313,6 +331,44 @@ typedef struct xmem_class_t
 #define XCLASS_LIST_BACK(xclass_ptr)  ((xclass_ptr)->xlist_tail.xlist_node.xchunk_prev)
 #define XCLASS_LIST_TAIL(xclass_ptr)  ((xchunk_handle_t)&(xclass_ptr)->xlist_tail)
 
+#define XSLICE_ARRAY_SIZE  \
+        ((XMEM_PAGE_SIZE - (2 * sizeof(xslice_arrptr_t))) / sizeof(xmem_slice_t))
+
+/**
+ * @struct xslice_array_t
+ * @brief  分片数组块。其作为 xslice_recyc_queue_t 的链表节点块。
+ */
+typedef struct xslice_array_t
+{
+    xslice_arrptr_t  xarray_prev;  ///< 前驱节点
+    xslice_arrptr_t  xarray_next;  ///< 后继节点
+    xmem_slice_t     xslice_aptr[XSLICE_ARRAY_SIZE]; ///< 分片数组
+} xslice_array_t;
+
+typedef volatile x_uint32_t      xatomic_size_t;
+typedef volatile xslice_arrptr_t xatomic_arrptr_t;
+
+/**
+ * @struct xslice_rqueue_t
+ * @brief  用于存储 待回收的内存分片 的队列。
+ */
+typedef struct xslice_rqueue_t
+{
+    xatomic_size_t   xqueue_size;   ///< 队列中的分片数量
+    xatomic_arrptr_t xarray_sptr;   ///< 用于保存临时分片数组块（备用缓存块）
+
+    x_uint32_t       xarray_bpos;   ///< 队列中的起始位置
+    xslice_arrptr_t  xarray_bptr;   ///< 分片数组块链表的起始块
+
+    x_uint32_t       xarray_epos;   ///< 队列中的终点位置
+    xslice_arrptr_t  xarray_eptr;   ///< 分片数组块链表的终点块
+
+    x_uint32_t       xarray_tpos;   ///< 队列中的结尾位置
+    xslice_arrptr_t  xarray_tptr;   ///< 分片数组块链表的结尾块
+} xslice_rqueue_t;
+
+typedef volatile x_uint32_t   x_spinlock_t;
+
 /**
  * @struct xmem_pool_t
  * @brief  内存池的结构体描述信息。
@@ -327,11 +383,89 @@ typedef struct xmem_pool_t
     x_uint64_t      xsize_valid;   ///< 可使用到的缓存大小
     x_uint64_t      xsize_using;   ///< 正在使用的缓存大小
 
+    x_spinlock_t    xspinlock_que; ///< 队列操作的同步旋转锁
+    xslice_rqueue_t xslice_rqueue; ///< 待回收的内存分片 的队列
+
     x_rbtree_ptr    xrbtree_ptr;   ///< 存储管理所有 chunk 内存块对象的红黑树
     xmem_class_t    xclass_ptr[XSLICE_TYPE_AMOUNT]; ///< 各个内存分类
 } xmem_pool_t;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+/**********************************************************/
+/**
+ * @brief 指针赋值的原子操作。
+ */
+static inline x_void_t * xmem_atomic_xchg_ptr(
+    x_void_t * volatile * xdst_ptr, x_void_t * xchg_ptr)
+{
+#ifdef _MSC_VER
+    return _InterlockedExchangePointer(xdst_ptr, xchg_ptr);
+#else // !_MSC_VER
+    return __sync_val_compare_and_swap(xdst_ptr, *xdst_ptr, xchg_ptr);
+#endif // _MSC_VER
+}
+
+/**********************************************************/
+/**
+ * @brief 变量与指定值比较相等则赋新值的原子操作。
+ * 
+ * @param [in,out] xut_dest     : 目标操作的变量值。
+ * @param [in    ] xut_exchange : 比较成功后所赋的新值。
+ * @param [in    ] xut_compare  : 指定比较的数值。
+ * 
+ * @return x_uint32_t
+ *         - 返回 xut_dest 的原始值。
+ */
+static inline x_uint32_t xmem_atomic_cmpxchg_32(
+    volatile x_uint32_t * xut_dest, x_uint32_t xut_exchange, x_uint32_t xut_compare)
+{
+#ifdef _MSC_VER
+    return _InterlockedCompareExchange(xut_dest, xut_exchange, xut_compare);
+#else // !_MSC_VER
+    return __sync_val_compare_and_swap(xut_dest, xut_compare, xut_exchange);
+#endif // _MSC_VER
+}
+
+/**********************************************************/
+/**
+ * @brief 变量与指定值执行加法操作的原子操作。
+ * 
+ * @param [in,out] xut_dest  : 目标操作的变量值。
+ * @param [in    ] xut_value : 执行加法操作的指定值。
+ * 
+ * @return x_uint32_t
+ *         - 返回 xut_dest 的原始值。
+ */
+static inline x_uint32_t xmem_atomic_add_32(
+    volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
+{
+#ifdef _MSC_VER
+    return _InterlockedExchangeAdd(xut_dest, xut_value);
+#else // !_MSC_VER
+    return __sync_fetch_and_add(xut_dest, xut_value);
+#endif // _MSC_VER
+}
+
+/**********************************************************/
+/**
+ * @brief 变量与指定值执行减法操作的原子操作。
+ * 
+ * @param [in,out] xut_dest  : 目标操作的变量值。
+ * @param [in    ] xut_value : 执行减法操作的指定值。
+ * 
+ * @return x_uint32_t
+ *         - 返回 xut_dest 的原始值。
+ */
+static inline x_uint32_t xmem_atomic_sub_32(
+    volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
+{
+#ifdef _MSC_VER
+    return _InterlockedExchangeAdd(xut_dest, ~xut_value + 1);
+#else // !_MSC_VER
+    return __sync_fetch_and_sub(xut_dest, xut_value);
+#endif // _MSC_VER
+}
 
 /**********************************************************/
 /**
@@ -749,6 +883,155 @@ static xchunk_handle_t xclass_get_non_empty_chunk(xclass_handle_t xclass_ptr)
     }
 
     return X_NULL;
+}
+
+//====================================================================
+
+// 
+// xslice_rqueue_t : 分片回收队列的相关操作接口
+// 
+
+/**********************************************************/
+/**
+ * @brief 初始化 xslice_rqueue_t 对象。
+ */
+static x_void_t xsrque_init(xsrque_handle_t xsrque_ptr)
+{
+    xsrque_ptr->xqueue_size = 0;
+    xsrque_ptr->xarray_sptr = X_NULL;
+    xsrque_ptr->xarray_bpos = 0;
+    xsrque_ptr->xarray_bptr = X_NULL;
+    xsrque_ptr->xarray_epos = 0;
+    xsrque_ptr->xarray_eptr = X_NULL;
+    xsrque_ptr->xarray_tpos = 0;
+    xsrque_ptr->xarray_tptr = X_NULL;
+
+    xsrque_ptr->xarray_bptr =
+        (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL);
+    xsrque_ptr->xarray_eptr = xsrque_ptr->xarray_bptr;
+
+    XASSERT(X_NULL != xsrque_ptr->xarray_bptr);
+}
+
+/**********************************************************/
+/**
+ * @brief 释放 xslice_rqueue_t 对象的系统资源。
+ */
+static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
+{
+    xslice_arrptr_t xarray_ptr = X_NULL;
+
+    XASSERT(0 == xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 0));
+
+    //======================================
+
+    while (X_TRUE)
+    {
+        if (xsrque_ptr->xarray_bptr == xsrque_ptr->xarray_eptr)
+        {
+            xmem_heap_free(
+                xsrque_ptr->xarray_bptr, sizeof(xslice_array_t), X_NULL);
+            break;
+        }
+
+        xarray_ptr = xsrque_ptr->xarray_bptr;
+        xsrque_ptr->xarray_bptr = xsrque_ptr->xarray_bptr->xarray_next;
+        if (X_NULL != xarray_ptr)
+        {
+            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+        }
+    }
+
+    //======================================
+
+    xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, X_NULL);
+    if (X_NULL != xarray_ptr)
+    {
+        xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+    }
+
+    //======================================
+
+    xsrque_ptr->xqueue_size = 0;
+    xsrque_ptr->xarray_sptr = X_NULL;
+    xsrque_ptr->xarray_bpos = 0;
+    xsrque_ptr->xarray_bptr = X_NULL;
+    xsrque_ptr->xarray_epos = 0;
+    xsrque_ptr->xarray_eptr = X_NULL;
+    xsrque_ptr->xarray_tpos = 0;
+    xsrque_ptr->xarray_tptr = X_NULL;
+
+    //======================================
+}
+
+/**********************************************************/
+/**
+ * @brief 向 xslice_rqueue_t 队列尾端压入一个分片。
+ */
+static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
+{
+    xslice_arrptr_t xarray_ptr = X_NULL;
+
+    xsrque_ptr->xarray_eptr->xslice_aptr[xsrque_ptr->xarray_epos] = xemt_value;
+    xsrque_ptr->xarray_tptr = xsrque_ptr->xarray_eptr;
+    xsrque_ptr->xarray_tpos = xsrque_ptr->xarray_epos;
+
+    xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 1);
+
+    if (++xsrque_ptr->xarray_epos == XSLICE_ARRAY_SIZE)
+    {
+        xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, X_NULL);
+        if (X_NULL != xarray_ptr)
+        {
+            xsrque_ptr->xarray_eptr->xarray_next = xarray_ptr;
+            xarray_ptr->xarray_prev = xsrque_ptr->xarray_eptr;
+        }
+        else
+        {
+            xsrque_ptr->xarray_eptr->xarray_next =
+                (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL);
+            xsrque_ptr->xarray_eptr->xarray_prev = xsrque_ptr->xarray_eptr;
+        }
+
+        xsrque_ptr->xarray_eptr = xsrque_ptr->xarray_eptr->xarray_next;
+        xsrque_ptr->xarray_epos = 0;
+    }
+}
+
+/**********************************************************/
+/**
+ * @brief 从 xslice_rqueue_t 队列前端弹出一个分片。
+ */
+static xmem_slice_t xsrque_pop(xsrque_handle_t xsrque_ptr)
+{
+    xmem_slice_t    xmem_slice = X_NULL;
+    xslice_arrptr_t xarray_ptr = X_NULL;
+
+    if (0 == xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 0))
+    {
+        return X_NULL;
+    }
+
+    xmem_atomic_sub_32(&xsrque_ptr->xqueue_size, 1);
+
+    xmem_slice = xsrque_ptr->xarray_bptr->xslice_aptr[xsrque_ptr->xarray_bpos];
+
+    if (++xsrque_ptr->xarray_bpos == XSLICE_ARRAY_SIZE)
+    {
+        xarray_ptr = xsrque_ptr->xarray_bptr;
+        xsrque_ptr->xarray_bptr = xsrque_ptr->xarray_bptr->xarray_next;
+        XASSERT(X_NULL != xsrque_ptr->xarray_bptr);
+        xsrque_ptr->xarray_bptr->xarray_prev = X_NULL;
+        xsrque_ptr->xarray_bpos = 0;
+
+        xarray_ptr = xmem_atomic_xchg_ptr(&xsrque_ptr->xarray_sptr, xarray_ptr);
+        if (X_NULL != xarray_ptr)
+        {
+            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+        }
+    }
+
+    return xmem_slice;
 }
 
 //====================================================================
