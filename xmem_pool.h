@@ -146,7 +146,7 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size);
  * 
  * @return x_int32_t
  *         - 成功，返回 XMEM_ERR_OK；
- *         - 失败，返回 错误码（擦看 @see xmem_err_code 枚举值）。
+ *         - 失败，返回 错误码（参看 @see xmem_err_code 枚举值）。
  */
 x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice);
 
