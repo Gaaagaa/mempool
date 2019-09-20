@@ -45,6 +45,7 @@ typedef enum xmem_err_code
 
     XMEM_ERR_SLICE_NOT_FOUND = 0x00011010, ///< 内存分片在池中找不到
     XMEM_ERR_SLICE_UNALIGNED = 0x00011020, ///< 内存分片在分块中的地址未对齐
+    XMEM_ERR_SLICE_RECYCLED  = 0x00011030, ///< 内存分片已经被回收
 } xmem_err_code;
 
 /**
