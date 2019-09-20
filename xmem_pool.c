@@ -27,18 +27,15 @@
 #include <memory.h>
 
 #ifdef _MSC_VER
-
 #include <windows.h>
-
-#else // !_MSC_VER
-
+#elif defined(__GNUC__)
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
-
 #define gettid() syscall(__NR_gettid)
-
-#endif // _MSC_VER
+#else
+#error "Unknow platform"
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,10 +64,10 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifdef __GNU_C__
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
-#endif // __GNU_C__
+#endif // __GNUC__
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -441,77 +438,87 @@ typedef struct xmem_pool_t
 
 /**********************************************************/
 /**
- * @brief 指针赋值的原子操作。
+ * @brief 原子操作：比较成功后赋值。
+ * @note  返回目标变量的旧值。
  */
-static inline x_void_t * xmem_atomic_xchg_ptr(
+static inline x_void_t * xatomic_xchg_ptr(
     x_void_t * volatile * xdst_ptr, x_void_t * xchg_ptr)
 {
 #ifdef _MSC_VER
     return _InterlockedExchangePointer(xdst_ptr, xchg_ptr);
-#else // !_MSC_VER
-    return __sync_val_compare_and_swap(xdst_ptr, *xdst_ptr, xchg_ptr);
-#endif // _MSC_VER
+#elif defined(__GNUC__)
+    x_void_t * xold_ptr;
+    do 
+    {
+        xold_ptr = *xdst_ptr;
+    } while (!__sync_bool_compare_and_swap(xdst_ptr, xold_ptr, xchg_ptr));
+    return xold_ptr;
+#else 
+    XASSERT(X_FALSE);
+    x_void_t * xold_ptr = *xdst_ptr;
+    *xdst_ptr = xchg_ptr;
+    return xold_ptr;
+#endif
 }
 
 /**********************************************************/
 /**
- * @brief 变量与指定值比较相等则赋新值的原子操作。
- * 
- * @param [in,out] xut_dest     : 目标操作的变量值。
- * @param [in    ] xut_exchange : 比较成功后所赋的新值。
- * @param [in    ] xut_compare  : 指定比较的数值。
- * 
- * @return x_uint32_t
- *         - 返回 xut_dest 的原始值。
+ * @brief 原子操作：比较成功后赋值。
+ * @note  返回目标变量的旧值。
  */
-static inline x_uint32_t xmem_atomic_cmpxchg_32(
+static inline x_uint32_t xatomic_cmpxchg_32(
     volatile x_uint32_t * xut_dest, x_uint32_t xut_exchange, x_uint32_t xut_compare)
 {
 #ifdef _MSC_VER
     return _InterlockedCompareExchange(xut_dest, xut_exchange, xut_compare);
-#else // !_MSC_VER
+#elif defined(__GNUC__)
     return __sync_val_compare_and_swap(xut_dest, xut_compare, xut_exchange);
-#endif // _MSC_VER
+#else
+    XASSERT(X_FALSE);
+    x_uint32_t xut_old = *xut_dest;
+    if (*xut_dest == xut_exchange) *xut_dest = xut_exchange;
+    return xut_old;
+#endif
 }
 
 /**********************************************************/
 /**
- * @brief 变量与指定值执行加法操作的原子操作。
- * 
- * @param [in,out] xut_dest  : 目标操作的变量值。
- * @param [in    ] xut_value : 执行加法操作的指定值。
- * 
- * @return x_uint32_t
- *         - 返回 xut_dest 的原始值。
+ * @brief 原子操作：加法。
+ * @note  返回目标变量的旧值。
  */
-static inline x_uint32_t xmem_atomic_add_32(
+static inline x_uint32_t xatomic_add_32(
     volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
 {
 #ifdef _MSC_VER
     return _InterlockedExchangeAdd(xut_dest, xut_value);
-#else // !_MSC_VER
+#elif defined __GNUC__
     return __sync_fetch_and_add(xut_dest, xut_value);
-#endif // _MSC_VER
+#else
+    XASSERT(X_FALSE);
+    x_uint32_t xut_old = *xut_dest;
+    *xut_dest += xut_value;
+    return xut_old;
+#endif
 }
 
 /**********************************************************/
 /**
- * @brief 变量与指定值执行减法操作的原子操作。
- * 
- * @param [in,out] xut_dest  : 目标操作的变量值。
- * @param [in    ] xut_value : 执行减法操作的指定值。
- * 
- * @return x_uint32_t
- *         - 返回 xut_dest 的原始值。
+ * @brief 原子操作：减法。
+ * @note  返回目标变量的旧值。
  */
-static inline x_uint32_t xmem_atomic_sub_32(
+static inline x_uint32_t xatomic_sub_32(
     volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
 {
 #ifdef _MSC_VER
     return _InterlockedExchangeAdd(xut_dest, ~xut_value + 1);
-#else // !_MSC_VER
+#elif defined(__GNUC__)
     return __sync_fetch_and_sub(xut_dest, xut_value);
-#endif // _MSC_VER
+#else
+    XASSERT(X_FALSE);
+    x_uint32_t xut_old = *xut_dest;
+    *xut_dest += xut_value;
+    return xut_old;
+#endif
 }
 
 /**********************************************************/
@@ -979,7 +986,7 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
 {
     xslice_arrptr_t xarray_ptr = X_NULL;
 
-    XASSERT(0 == xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 0));
+    XASSERT(0 == xatomic_add_32(&xsrque_ptr->xqueue_size, 0));
 
     //======================================
 
@@ -1002,7 +1009,7 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
 
     //======================================
 
-    xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+    xarray_ptr = (xslice_arrptr_t)xatomic_xchg_ptr(
         (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, (x_void_t *)X_NULL);
 
     if (X_NULL != xarray_ptr)
@@ -1032,11 +1039,11 @@ static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
 
     xsrque_ptr->xarray_eptr->xslice_aptr[xsrque_ptr->xarray_epos] = xemt_value;
 
-    xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 1);
+    xatomic_add_32(&xsrque_ptr->xqueue_size, 1);
 
     if (++xsrque_ptr->xarray_epos == XSLICE_ARRAY_SIZE)
     {
-        xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+        xarray_ptr = (xslice_arrptr_t)xatomic_xchg_ptr(
             (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, (x_void_t *)X_NULL);
 
         if (X_NULL != xarray_ptr)
@@ -1065,12 +1072,12 @@ static xmem_slice_t xsrque_pop(xsrque_handle_t xsrque_ptr)
     xmem_slice_t    xmem_slice = X_NULL;
     xslice_arrptr_t xarray_ptr = X_NULL;
 
-    if (0 == xmem_atomic_add_32(&xsrque_ptr->xqueue_size, 0))
+    if (0 == xatomic_add_32(&xsrque_ptr->xqueue_size, 0))
     {
         return X_NULL;
     }
 
-    xmem_atomic_sub_32(&xsrque_ptr->xqueue_size, 1);
+    xatomic_sub_32(&xsrque_ptr->xqueue_size, 1);
 
     xmem_slice = xsrque_ptr->xarray_bptr->xslice_aptr[xsrque_ptr->xarray_bpos];
 
@@ -1082,7 +1089,7 @@ static xmem_slice_t xsrque_pop(xsrque_handle_t xsrque_ptr)
         xsrque_ptr->xarray_bptr->xarray_prev = X_NULL;
         xsrque_ptr->xarray_bpos = 0;
 
-        xarray_ptr = (xslice_arrptr_t)xmem_atomic_xchg_ptr(
+        xarray_ptr = (xslice_arrptr_t)xatomic_xchg_ptr(
             (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, xarray_ptr);
 
         if (X_NULL != xarray_ptr)
@@ -1864,8 +1871,8 @@ x_void_t xmpool_release_unused(xmpool_handle_t xmpool_ptr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifdef __GNU_C__
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
-#endif // __GNU_C__
+#endif // __GNUC__
 
 ////////////////////////////////////////////////////////////////////////////////
