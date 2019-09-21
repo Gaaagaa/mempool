@@ -1209,10 +1209,11 @@ static xrbt_void_t * xrbtree_node_memalloc(
 
 /**********************************************************/
 /**
- * @brief 红黑树申请节点对象缓存的回调函数。
+ * @brief 红黑树释放节点对象缓存的回调函数。
  *
  * @param [in ] xiter_node : 待释放的节点对象缓存。
  * @param [in ] xnode_size : 节点对象缓存的大小。
+ * @param [in ] xrbt_ctxt  : 回调的上下文标识。
  */
 static xrbt_void_t xrbtree_node_memfree(
                             x_rbnode_iter xiter_node,
@@ -1285,13 +1286,13 @@ static xrbt_void_t xrbtree_chunk_destruct(
 
 /**********************************************************/
 /**
- * @brief 默认的 比较节点索引键值的回调函数类型。
- *
+ * @brief 比较 chunk 节点索引键值的回调函数。
+ * 
  * @param [in ] xrbt_lkey : 比较操作的左值。
  * @param [in ] xrbt_rkey : 比较操作的右值。
  * @param [in ] xrbt_size : xrbt_lkey（or xrbt_rkey） 缓存大小。
  * @param [in ] xrbt_ctxt : 回调的上下文标识。
- *
+ * 
  * @return xrbt_bool_t
  *         - 若 xrbt_lkey < xrbt_rkey ，返回 XRBT_TRUE；
  *         - 否则 返回 XRBT_FALSE。
