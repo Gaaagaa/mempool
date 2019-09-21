@@ -52,6 +52,7 @@ typedef enum xmem_err_code
  * @brief 执行堆内存块申请的函数类型。
  * 
  * @param [in ] xst_size    : 请求的堆内存块大小。
+ * @param [in ] xht_owner   : 持有该（返回的）堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
  * 
  * @return x_void_t *
@@ -59,6 +60,7 @@ typedef enum xmem_err_code
  *         - 失败，返回 X_NULL。
  */
 typedef x_void_t * (* xfunc_alloc_t)(x_size_t xst_size,
+                                     x_handle_t xht_owner,
                                      x_handle_t xht_context);
 
 /**
@@ -66,11 +68,12 @@ typedef x_void_t * (* xfunc_alloc_t)(x_size_t xst_size,
  * 
  * @param [in ] xmt_heap    : 释放的堆内存块。
  * @param [in ] xst_size    : 释放的堆内存块大小。
+ * @param [in ] xht_owner   : 持有该堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
- * 
  */
 typedef x_void_t (* xfunc_free_t)(x_void_t * xmt_heap,
                                   x_size_t xst_size,
+                                  x_handle_t xht_owner,
                                   x_handle_t xht_context);
 
 /** 内存分片类型 */
@@ -110,6 +113,18 @@ xmpool_handle_t xmpool_create(
  * @brief 销毁内存池对象。
  */
 x_void_t xmpool_destroy(xmpool_handle_t xmpool_ptr);
+
+/**********************************************************/
+/**
+ * @brief 内存池对象 所隶属的工作线程 ID。
+ */
+x_uint32_t xmpool_worktid(xmpool_handle_t xmpool_ptr);
+
+/**********************************************************/
+/**
+ * @brief 设置 内存池对象 所隶属的工作线程 ID。
+ */
+x_void_t xmpool_set_worktid(xmpool_handle_t xmpool_ptr, x_uint32_t xut_worktid);
 
 /**********************************************************/
 /**

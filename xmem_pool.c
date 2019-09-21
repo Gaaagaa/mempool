@@ -32,7 +32,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
-#define gettid() syscall(__NR_gettid)
 #else
 #error "Unknow platform"
 #endif
@@ -81,7 +80,6 @@ typedef struct xmem_class_t    * xclass_handle_t;
 typedef struct xslice_array_t  * xslice_arrptr_t;
 typedef struct xslice_rqueue_t * xsrque_handle_t;
 
-#define XMEM_RBNODE_SIZE    (5 * sizeof(x_handle_t))
 #define XMEM_PAGE_SIZE      (1024 * 4)
 
 #define XSLICE_SIZE____32      32 // the  increment is 32
@@ -232,6 +230,8 @@ typedef struct xchunk_alias_t
     } xlist_node;
 } xchunk_alias_t;
 
+#define XCHUNK_RBNODE_SIZE    (5 * sizeof(x_handle_t))
+
 /**
  * @struct xmem_chunk_t
  * @brief  内存块的结构体描述信息。
@@ -256,7 +256,7 @@ typedef struct xmem_chunk_t
      */
     struct
     {
-    x_byte_t xbt_ptr[XMEM_RBNODE_SIZE]; ///< 此字段仅起到内存占位的作用
+    x_byte_t xbt_ptr[XCHUNK_RBNODE_SIZE]; ///< 此字段仅起到内存占位的作用
     } xtree_node;
 
     /**
@@ -378,11 +378,11 @@ typedef struct xmem_class_t
 #define XCLASS_LIST_TAIL(xclass_ptr)  ((xchunk_handle_t)&(xclass_ptr)->xlist_tail)
 
 #define XSLICE_ARRAY_SIZE  \
-        ((XMEM_PAGE_SIZE - (2 * sizeof(xslice_arrptr_t))) / sizeof(xmem_slice_t))
+    ((XMEM_PAGE_SIZE - (2 * sizeof(xslice_arrptr_t))) / sizeof(xmem_slice_t))
 
 /**
  * @struct xslice_array_t
- * @brief  分片数组块。其作为 xslice_recyc_queue_t 的链表节点块。
+ * @brief  分片数组块。其作为 xslice_rqueue_t 的链表节点块。
  */
 typedef struct xslice_array_t
 {
@@ -391,8 +391,9 @@ typedef struct xslice_array_t
     xmem_slice_t     xslice_aptr[XSLICE_ARRAY_SIZE]; ///< 分片数组
 } xslice_array_t;
 
-typedef x_uint32_t volatile      xatomic_size_t;
-typedef xslice_arrptr_t volatile xatomic_arrptr_t;
+typedef volatile x_uint32_t      xatomic_size_t;
+typedef volatile xslice_arrptr_t xatomic_arrptr_t;
+typedef volatile x_uint32_t      xatomic_lock_t;
 
 /**
  * @struct xslice_rqueue_t
@@ -410,8 +411,6 @@ typedef struct xslice_rqueue_t
     xslice_arrptr_t  xarray_eptr;   ///< 分片数组块链表的终点块
 } xslice_rqueue_t;
 
-typedef x_uint32_t volatile   x_spinlock_t;
-
 /**
  * @struct xmem_pool_t
  * @brief  内存池的结构体描述信息。
@@ -426,7 +425,8 @@ typedef struct xmem_pool_t
     x_uint64_t      xsize_valid;   ///< 可使用到的缓存大小
     x_uint64_t      xsize_using;   ///< 正在使用的缓存大小
 
-    x_spinlock_t    xspinlock_que; ///< 队列操作的同步旋转锁
+    x_uint32_t      xut_worktid;   ///< 隶属的工作线程 ID
+    xatomic_lock_t  xspinlock_que; ///< 队列操作的同步旋转锁
     xslice_rqueue_t xslice_rqueue; ///< 待回收的内存分片 的队列
 
     x_rbtree_ptr    xrbtree_ptr;   ///< 存储管理所有 chunk 内存块对象的红黑树
@@ -523,6 +523,22 @@ static inline x_uint32_t xatomic_sub_32(
 
 /**********************************************************/
 /**
+ * @brief 获取当前线程 ID 值。
+ */
+static inline x_uint32_t xsys_tid(void)
+{
+#ifdef _MSC_VER
+    return (x_uint32_t)GetCurrentThreadId();
+#elif defined(__GNUC__)
+    return (x_uint32_t)syscall(__NR_gettid);
+#else
+    XASSERT(X_FALSE);
+    return 0;
+#endif
+}
+
+/**********************************************************/
+/**
  * @brief 内存清零。
  */
 static x_void_t * xmem_clear(x_void_t * xmem_ptr, x_uint32_t xut_size)
@@ -535,6 +551,7 @@ static x_void_t * xmem_clear(x_void_t * xmem_ptr, x_uint32_t xut_size)
  * @brief 默认的 堆内存块 申请接口。
  * 
  * @param [in ] xst_size    : 请求的堆内存块大小。
+ * @param [in ] xht_owner   : 持有该（返回的）堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
  * 
  * @return x_void_t *
@@ -542,6 +559,7 @@ static x_void_t * xmem_clear(x_void_t * xmem_ptr, x_uint32_t xut_size)
  *         - 失败，返回 X_NULL。
  */
 static x_void_t * xmem_heap_alloc(x_size_t xst_size,
+                                  x_handle_t xht_owner,
                                   x_handle_t xht_context)
 {
     return malloc(xst_size);
@@ -553,11 +571,12 @@ static x_void_t * xmem_heap_alloc(x_size_t xst_size,
  * 
  * @param [in ] xmt_heap    : 释放的堆内存块。
  * @param [in ] xst_size    : 释放的堆内存块大小。
+ * @param [in ] xht_owner   : 持有该堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
- * 
  */
 static x_void_t xmem_heap_free(x_void_t * xmt_heap,
                                x_size_t xst_size,
+                               x_handle_t xht_owner,
                                x_handle_t xht_context)
 {
     if (X_NULL != xmt_heap)
@@ -972,7 +991,7 @@ static x_void_t xsrque_init(xsrque_handle_t xsrque_ptr)
     xsrque_ptr->xarray_eptr = X_NULL;
 
     xsrque_ptr->xarray_bptr =
-        (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL);
+        (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL, X_NULL);
     xsrque_ptr->xarray_eptr = xsrque_ptr->xarray_bptr;
 
     XASSERT(X_NULL != xsrque_ptr->xarray_bptr);
@@ -995,7 +1014,7 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
         if (xsrque_ptr->xarray_bptr == xsrque_ptr->xarray_eptr)
         {
             xmem_heap_free(
-                xsrque_ptr->xarray_bptr, sizeof(xslice_array_t), X_NULL);
+                xsrque_ptr->xarray_bptr, sizeof(xslice_array_t), X_NULL, X_NULL);
             break;
         }
 
@@ -1003,7 +1022,7 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
         xsrque_ptr->xarray_bptr = xsrque_ptr->xarray_bptr->xarray_next;
         if (X_NULL != xarray_ptr)
         {
-            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL, X_NULL);
         }
     }
 
@@ -1014,7 +1033,7 @@ static x_void_t xsrque_release(xsrque_handle_t xsrque_ptr)
 
     if (X_NULL != xarray_ptr)
     {
-        xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+        xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL, X_NULL);
     }
 
     //======================================
@@ -1054,7 +1073,7 @@ static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
         else
         {
             xsrque_ptr->xarray_eptr->xarray_next =
-                (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL);
+                (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL, X_NULL);
             xsrque_ptr->xarray_eptr->xarray_prev = xsrque_ptr->xarray_eptr;
         }
 
@@ -1094,7 +1113,7 @@ static xmem_slice_t xsrque_pop(xsrque_handle_t xsrque_ptr)
 
         if (X_NULL != xarray_ptr)
         {
-            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL);
+            xmem_heap_free(xarray_ptr, sizeof(xslice_array_t), X_NULL, X_NULL);
         }
     }
 
@@ -1172,7 +1191,7 @@ static xrbt_void_t * xrbtree_node_memalloc(
                             xrbt_size_t xst_nsize,
                             xrbt_ctxt_t xrbt_ctxt)
 {
-    XASSERT(xst_nsize <= XMEM_RBNODE_SIZE);
+    XASSERT(xst_nsize <= XCHUNK_RBNODE_SIZE);
     return (xrbt_void_t *)((*(xchunk_handle_t *)xrbt_vkey)->xtree_node.xbt_ptr);
 }
 
@@ -1188,7 +1207,7 @@ static xrbt_void_t xrbtree_node_memfree(
                             xrbt_size_t xnode_size,
                             xrbt_ctxt_t xrbt_ctxt)
 {
-    XASSERT(xnode_size <= XMEM_RBNODE_SIZE);
+    XASSERT(xnode_size <= XCHUNK_RBNODE_SIZE);
 
     xchunk_handle_t xchunk_ptr = xrbtree_iter_chunk(xiter_node);
     xmpool_handle_t xmpool_ptr = (xmpool_handle_t)xrbt_ctxt;
@@ -1199,6 +1218,7 @@ static xrbt_void_t xrbtree_node_memfree(
     xmpool_ptr->xsize_cached -= xchunk_ptr->xchunk_size;
     xmpool_ptr->xfunc_free(xchunk_ptr,
                            xchunk_ptr->xchunk_size,
+                           (x_handle_t)xmpool_ptr,
                            xmpool_ptr->xht_context);
 }
 
@@ -1478,7 +1498,9 @@ static xchunk_handle_t xmpool_alloc_chunk(
 
     xchunk_handle_t xchunk_ptr =
         (xchunk_handle_t)xmpool_ptr->xfunc_alloc(
-                            xchunk_size, xmpool_ptr->xht_context);
+                            xchunk_size,
+                            (x_handle_t)xmpool_ptr,
+                            xmpool_ptr->xht_context);
     XASSERT(X_NULL != xchunk_ptr);
     xmpool_ptr->xsize_cached += xchunk_size;
 
@@ -1531,6 +1553,7 @@ static xchunk_handle_t xmpool_alloc_chunk(
         xmpool_ptr->xsize_cached -= xchunk_ptr->xchunk_size;
         xmpool_ptr->xfunc_free(xchunk_ptr,
                                xchunk_ptr->xchunk_size,
+                               (x_handle_t)xmpool_ptr,
                                xmpool_ptr->xht_context);
         xchunk_ptr = X_NULL;
     }
@@ -1582,7 +1605,7 @@ xmpool_handle_t xmpool_create(xfunc_alloc_t xfunc_alloc,
     };
 
     xmpool_handle_t xmpool_ptr =
-        (xmpool_handle_t)xmem_heap_alloc(sizeof(xmem_pool_t), X_NULL);
+        (xmpool_handle_t)xmem_heap_alloc(sizeof(xmem_pool_t), X_NULL, X_NULL);
 
     XASSERT(X_NULL != xmpool_ptr);
 
@@ -1593,6 +1616,10 @@ xmpool_handle_t xmpool_create(xfunc_alloc_t xfunc_alloc,
     xmpool_ptr->xsize_cached = 0;
     xmpool_ptr->xsize_valid  = 0;
     xmpool_ptr->xsize_using  = 0;
+
+    xmpool_ptr->xut_worktid   = xsys_tid();
+    xmpool_ptr->xspinlock_que = 0;
+    xsrque_init(&xmpool_ptr->xslice_rqueue);
 
     xcallback.xctxt_t_callback = xmpool_ptr;
     xmpool_ptr->xrbtree_ptr = xrbtree_create(sizeof(xchunk_handle_t), &xcallback);
@@ -1612,6 +1639,11 @@ xmpool_handle_t xmpool_create(xfunc_alloc_t xfunc_alloc,
 x_void_t xmpool_destroy(xmpool_handle_t xmpool_ptr)
 {
     XASSERT(X_NULL != xmpool_ptr);
+    XASSERT(0 == xmpool_ptr->xsize_using);
+
+    xmpool_ptr->xut_worktid   = 0;
+    xmpool_ptr->xspinlock_que = 0;
+    xsrque_release(&xmpool_ptr->xslice_rqueue);
 
     if (XRBT_NULL != xmpool_ptr->xrbtree_ptr)
     {
@@ -1629,7 +1661,27 @@ x_void_t xmpool_destroy(xmpool_handle_t xmpool_ptr)
     xmpool_ptr->xsize_using  = 0;
     xmpool_ptr->xchunk_cptr  = X_NULL;
 
-    xmem_heap_free(xmpool_ptr, sizeof(xmem_pool_t), X_NULL);
+    xmem_heap_free(xmpool_ptr, sizeof(xmem_pool_t), X_NULL, X_NULL);
+}
+
+/**********************************************************/
+/**
+ * @brief 内存池对象 所隶属的工作线程 ID。
+ */
+x_uint32_t xmpool_worktid(xmpool_handle_t xmpool_ptr)
+{
+    XASSERT(X_NULL != xmpool_ptr);
+    return xmpool_ptr->xut_worktid;
+}
+
+/**********************************************************/
+/**
+ * @brief 设置 内存池对象 所隶属的工作线程 ID。
+ */
+x_void_t xmpool_set_worktid(xmpool_handle_t xmpool_ptr, x_uint32_t xut_worktid)
+{
+    XASSERT(X_NULL != xmpool_ptr);
+    xmpool_ptr->xut_worktid = xut_worktid;
 }
 
 /**********************************************************/
