@@ -29,7 +29,7 @@ using xtime_value = std::chrono::microseconds;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_context)
+x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_owner, x_handle_t xht_context)
 {
 #ifdef _MSC_VER
     return HeapAlloc(GetProcessHeap(), 0, xst_size);
@@ -38,7 +38,7 @@ x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_context)
 #endif // _MSC_VER
 }
 
-x_void_t heap_free(x_void_t * xmt_heap, x_size_t xst_size, x_handle_t xht_context)
+x_void_t heap_free(x_void_t * xmt_heap, x_size_t xst_size, x_handle_t xht_owner, x_handle_t xht_context)
 {
 #ifdef _MSC_VER
     HeapFree(GetProcessHeap(), 0, xmt_heap);
