@@ -159,6 +159,12 @@ typedef struct x_rbtree_node_callback_t
 
 /**********************************************************/
 /**
+ * @brief 返回内部的 sizeof(x_rbtree_t) 值。
+ */
+xrbt_size_t xrbtree_sizeof(void);
+
+/**********************************************************/
+/**
  * @brief 创建 x_rbtree_t 对象。
  * @note
  * xcallback 会在红黑树对象内部另有缓存保存所设置的参数，外部无须持续保留；
@@ -178,6 +184,21 @@ x_rbtree_ptr xrbtree_create(xrbt_size_t xst_ksize, xrbt_callback_t * xcallback);
  * @brief 销毁 x_rbtree_t 对象。
  */
 xrbt_void_t xrbtree_destroy(x_rbtree_ptr xthis_ptr);
+
+/**********************************************************/
+/**
+ * @brief 在已开辟 x_rbtree_t 对象缓存的位置上创建 x_rbtree_t 对象。
+ * @note  xthis_ptr 的缓存大小必须大于等于 sizeof(x_rbtree_t) 值。
+ */
+x_rbtree_ptr xrbtree_emplace_create(x_rbtree_ptr xthis_ptr,
+                                    xrbt_size_t xst_ksize,
+                                    xrbt_callback_t * xcallback);
+
+/**********************************************************/
+/**
+ * @brief 在已开辟 x_rbtree_t 对象缓存的位置上销毁 x_rbtree_t 对象。
+ */
+xrbt_void_t xrbtree_emplace_destroy(x_rbtree_ptr xthis_ptr);
 
 /**********************************************************/
 /**
