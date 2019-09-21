@@ -66,12 +66,12 @@ typedef x_void_t * (* xfunc_alloc_t)(x_size_t xst_size,
 /**
  * @brief 执行堆内存块释放的函数类型。
  * 
- * @param [in ] xmt_heap    : 释放的堆内存块。
- * @param [in ] xst_size    : 释放的堆内存块大小。
+ * @param [in ] xchunk_ptr  : 待释放的堆内存块。
+ * @param [in ] xst_size    : 待释放的堆内存块大小。
  * @param [in ] xht_owner   : 持有该堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
  */
-typedef x_void_t (* xfunc_free_t)(x_void_t * xmt_heap,
+typedef x_void_t (* xfunc_free_t)(x_void_t * xchunk_ptr,
                                   x_size_t xst_size,
                                   x_handle_t xht_owner,
                                   x_handle_t xht_context);

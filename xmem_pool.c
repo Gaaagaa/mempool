@@ -411,6 +411,8 @@ typedef struct xslice_rqueue_t
     xslice_arrptr_t  xarray_eptr;   ///< 分片数组块链表的终点块
 } xslice_rqueue_t;
 
+#define XMPOOL_RBTREE_SIZE    (16 * sizeof(x_handle_t))
+
 /**
  * @struct xmem_pool_t
  * @brief  内存池的结构体描述信息。
@@ -429,10 +431,20 @@ typedef struct xmem_pool_t
     xatomic_lock_t  xspinlock_que; ///< 队列操作的同步旋转锁
     xslice_rqueue_t xslice_rqueue; ///< 待回收的内存分片 的队列
 
-    x_rbtree_ptr    xrbtree_ptr;   ///< 存储管理所有 chunk 内存块对象的红黑树
     xchunk_handle_t xchunk_cptr;   ///< 记录当前操作的 chunk 对象
+
+    /**
+     * @brief 存储管理所有 chunk 内存块对象的红黑树（使用 emplace 方式进行创建）。
+     */
+    struct
+    {
+    x_byte_t xbt_ptr[XMPOOL_RBTREE_SIZE]; ///< 此字段仅起到内存占位的作用
+    } xrbtree;
+
     xmem_class_t    xclass_ptr[XSLICE_TYPE_AMOUNT]; ///< 各个内存分类
 } xmem_pool_t;
+
+#define XMPOOL_RBTREE(xmpool_ptr) ((x_rbtree_ptr)(xmpool_ptr)->xrbtree.xbt_ptr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -569,18 +581,18 @@ static x_void_t * xmem_heap_alloc(x_size_t xst_size,
 /**
  * @brief 默认的 堆内存块 释放接口。
  * 
- * @param [in ] xmt_heap    : 释放的堆内存块。
- * @param [in ] xst_size    : 释放的堆内存块大小。
+ * @param [in ] xchunk_ptr  : 待释放的堆内存块。
+ * @param [in ] xst_size    : 待释放的堆内存块大小。
  * @param [in ] xht_owner   : 持有该堆内存块的标识句柄。
  * @param [in ] xht_context : 回调的上下文标识句柄。
  */
-static x_void_t xmem_heap_free(x_void_t * xmt_heap,
+static x_void_t xmem_heap_free(x_void_t * xchunk_ptr,
                                x_size_t xst_size,
                                x_handle_t xht_owner,
                                x_handle_t xht_context)
 {
-    if (X_NULL != xmt_heap)
-        free(xmt_heap);
+    if (X_NULL != xchunk_ptr)
+        free(xchunk_ptr);
 }
 
 /**********************************************************/
@@ -1302,7 +1314,7 @@ static xrbt_bool_t xrbtree_chunk_compare(
 //====================================================================
 
 // 
-// xmem_pool_t : 内部调用的相关接口
+// xmem_pool_t : internal calls
 // 
 
 /**********************************************************/
@@ -1543,7 +1555,7 @@ static xchunk_handle_t xmpool_alloc_chunk(
     xmpool_ptr->xsize_valid +=
         (xchunk_ptr->xchunk_size - xchunk_ptr->xslice_queue.xut_offset);
 
-    if (!xrbtree_insert_chunk(xmpool_ptr->xrbtree_ptr, xchunk_ptr))
+    if (!xrbtree_insert_chunk(XMPOOL_RBTREE(xmpool_ptr), xchunk_ptr))
     {
         XASSERT(X_FALSE);
 
@@ -1569,13 +1581,13 @@ static inline x_bool_t xmpool_dealloc_chunk(
                                     xmpool_handle_t xmpool_ptr,
                                     xchunk_handle_t xchunk_ptr)
 {
-    return xrbtree_erase_chunk(xmpool_ptr->xrbtree_ptr, xchunk_ptr);
+    return xrbtree_erase_chunk(XMPOOL_RBTREE(xmpool_ptr), xchunk_ptr);
 }
 
 //====================================================================
 
 // 
-// xmem_pool_t : 对外提供的相关操作接口
+// xmem_pool_t : public interfaces
 // 
 
 /**********************************************************/
@@ -1622,8 +1634,10 @@ xmpool_handle_t xmpool_create(xfunc_alloc_t xfunc_alloc,
     xsrque_init(&xmpool_ptr->xslice_rqueue);
 
     xcallback.xctxt_t_callback = xmpool_ptr;
-    xmpool_ptr->xrbtree_ptr = xrbtree_create(sizeof(xchunk_handle_t), &xcallback);
-    XASSERT(XRBT_NULL != xmpool_ptr->xrbtree_ptr);
+    XASSERT(XMPOOL_RBTREE_SIZE >= xrbtree_sizeof());
+    xrbtree_emplace_create(XMPOOL_RBTREE(xmpool_ptr),
+                           sizeof(xchunk_handle_t),
+                           &xcallback);
 
     xmpool_ptr->xchunk_cptr = X_NULL;
 
@@ -1645,12 +1659,7 @@ x_void_t xmpool_destroy(xmpool_handle_t xmpool_ptr)
     xmpool_ptr->xspinlock_que = 0;
     xsrque_release(&xmpool_ptr->xslice_rqueue);
 
-    if (XRBT_NULL != xmpool_ptr->xrbtree_ptr)
-    {
-        xrbtree_destroy(xmpool_ptr->xrbtree_ptr);
-        xmpool_ptr->xrbtree_ptr = XRBT_NULL;
-    }
-
+    xrbtree_emplace_destroy(XMPOOL_RBTREE(xmpool_ptr));
     xmpool_class_release(xmpool_ptr);
 
     xmpool_ptr->xfunc_alloc  = X_NULL;
@@ -1832,7 +1841,7 @@ x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice)
     }
     else
     {
-        xchunk_ptr = xrbtree_hit_chunk(xmpool_ptr->xrbtree_ptr, xmem_slice);
+        xchunk_ptr = xrbtree_hit_chunk(XMPOOL_RBTREE(xmpool_ptr), xmem_slice);
     }
 
     if (X_NULL == xchunk_ptr)
