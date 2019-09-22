@@ -33,20 +33,6 @@ extern "C"
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @enum  xmem_err_code
- * @brief 内存池相关的操作错误码。
- */
-typedef enum xmem_err_code
-{
-    XMEM_ERR_OK              = 0x00000000, ///< 表示成功
-    XMEM_ERR_UNKNOW          = 0xFFFFFFFF, ///< 未知错误
-
-    XMEM_ERR_SLICE_NOT_FOUND = 0x00011010, ///< 内存分片在池中找不到
-    XMEM_ERR_SLICE_UNALIGNED = 0x00011020, ///< 内存分片在分块中的地址未对齐
-    XMEM_ERR_SLICE_RECYCLED  = 0x00011030, ///< 内存分片已经被回收
-} xmem_err_code;
-
-/**
  * @brief 执行堆内存块申请的函数类型。
  * 
  * @param [in ] xst_size    : 请求的堆内存块大小。

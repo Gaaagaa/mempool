@@ -46,8 +46,6 @@ typedef struct xmem_class_t    * xclass_handle_t;
 typedef struct xslice_array_t  * xslice_arrptr_t;
 typedef struct xslice_rqueue_t * xsrque_handle_t;
 
-#define XMEM_PAGE_SIZE      (1024 * 4)
-
 /**
  * slice size table: 
  * 
@@ -617,7 +615,6 @@ x_uint32_t xmem_align_size(x_uint32_t xut_size)
     };
 
 #define X_INDEX(size, align) (((size) + (align) - 1) / (align) - 1)
-#define X_ALIGN(size, align) (((size) + ((align) - 1)) & (~((align) - 1)))
 
     if (xut_size <= 1024)
     {
@@ -644,7 +641,6 @@ x_uint32_t xmem_align_size(x_uint32_t xut_size)
     return X_ALIGN(xut_size, XMEM_PAGE_SIZE);
 
 #undef X_INDEX
-#undef X_ALIGN
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -855,7 +851,7 @@ static x_void_t xclass_list_push_tail(
 {
     XASSERT(xclass_ptr == xchunk_ptr->xowner.xclass_ptr);
 
-    if (xclass_ptr->xlist_tail.xlist_node.xchunk_prev == xchunk_ptr)
+    if (XCLASS_LIST_BACK(xclass_ptr) == xchunk_ptr)
     {
         return;
     }
