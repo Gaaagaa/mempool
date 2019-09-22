@@ -20,46 +20,12 @@
  * </pre>
  */
 
+#include "xmem_comm.h"
 #include "xmem_pool.h"
 #include "xrbtree.h"
 
 #include <stdlib.h>
 #include <memory.h>
-
-#ifdef _MSC_VER
-#include <windows.h>
-#elif defined(__GNUC__)
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/syscall.h>
-#else
-#error "Unknow platform"
-#endif
-
-////////////////////////////////////////////////////////////////////////////////
-
-#ifndef ENABLE_XASSERT
-#if ((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 1
-#else // !((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 0
-#endif // ((defined _DEBUG) || (defined DEBUG))
-#endif // ENABLE_XASSERT
-
-#ifndef XASSERT
-#if ENABLE_XASSERT
-#include <assert.h>
-#define XASSERT(xptr)    assert(xptr)
-#else // !ENABLE_XASSERT
-#define XASSERT(xptr)
-#endif // ENABLE_XASSERT
-#endif // XASSERT
-
-#if ENABLE_XASSERT
-#define XASSERT_CHECK(xcheck, xptr)  do { if ((xcheck)) XASSERT(xptr); } while (0)
-#else // !ENABLE_XASSERT
-#define XASSERT_CHECK(xcheck, xptr)
-#endif // ENABLE_XASSERT
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -338,7 +304,6 @@ typedef struct xmem_chunk_t
 
     /**
      * @brief 用于红黑树的节点占位结构体，记录当前 chunk 对象在存储管理中的位置信息。
-     * @note  红黑树节点的 5 个基本字段：颜色值、父节点、左子树、右子树、索引键。
      */
     struct
     {
@@ -451,9 +416,6 @@ typedef struct xmem_class_t
 
     xmpool_handle_t xmpool_ptr;    ///< 持有当前 内存分类 对象的 内存池
 
-    /**
-     * @brief 管理该内存分类下所有 chunk 所使用的双向链表结构体。
-     */
     xchunk_alias_t  xlist_head;    ///< 双向链表的头部伪 chunk 节点
     xchunk_alias_t  xlist_tail;    ///< 双向链表的尾部伪 chunk 节点
 } xmem_class_t;
@@ -533,107 +495,6 @@ typedef struct xmem_pool_t
 #define XMPOOL_RBTREE(xmpool_ptr) ((x_rbtree_ptr)(xmpool_ptr)->xrbtree.xbt_ptr)
 
 ////////////////////////////////////////////////////////////////////////////////
-
-/**********************************************************/
-/**
- * @brief 原子操作：比较成功后赋值。
- * @note  返回目标变量的旧值。
- */
-static inline x_void_t * xatomic_xchg_ptr(
-    x_void_t * volatile * xdst_ptr, x_void_t * xchg_ptr)
-{
-#ifdef _MSC_VER
-    return _InterlockedExchangePointer(xdst_ptr, xchg_ptr);
-#elif defined(__GNUC__)
-    x_void_t * xold_ptr;
-    do 
-    {
-        xold_ptr = *xdst_ptr;
-    } while (!__sync_bool_compare_and_swap(xdst_ptr, xold_ptr, xchg_ptr));
-    return xold_ptr;
-#else 
-    XASSERT(X_FALSE);
-    x_void_t * xold_ptr = *xdst_ptr;
-    *xdst_ptr = xchg_ptr;
-    return xold_ptr;
-#endif
-}
-
-/**********************************************************/
-/**
- * @brief 原子操作：比较成功后赋值。
- * @note  返回目标变量的旧值。
- */
-static inline x_uint32_t xatomic_cmpxchg_32(
-    volatile x_uint32_t * xut_dest, x_uint32_t xut_exchange, x_uint32_t xut_compare)
-{
-#ifdef _MSC_VER
-    return _InterlockedCompareExchange(xut_dest, xut_exchange, xut_compare);
-#elif defined(__GNUC__)
-    return __sync_val_compare_and_swap(xut_dest, xut_compare, xut_exchange);
-#else
-    XASSERT(X_FALSE);
-    x_uint32_t xut_old = *xut_dest;
-    if (*xut_dest == xut_exchange) *xut_dest = xut_exchange;
-    return xut_old;
-#endif
-}
-
-/**********************************************************/
-/**
- * @brief 原子操作：加法。
- * @note  返回目标变量的旧值。
- */
-static inline x_uint32_t xatomic_add_32(
-    volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
-{
-#ifdef _MSC_VER
-    return _InterlockedExchangeAdd(xut_dest, xut_value);
-#elif defined __GNUC__
-    return __sync_fetch_and_add(xut_dest, xut_value);
-#else
-    XASSERT(X_FALSE);
-    x_uint32_t xut_old = *xut_dest;
-    *xut_dest += xut_value;
-    return xut_old;
-#endif
-}
-
-/**********************************************************/
-/**
- * @brief 原子操作：减法。
- * @note  返回目标变量的旧值。
- */
-static inline x_uint32_t xatomic_sub_32(
-    volatile x_uint32_t * xut_dest, x_uint32_t xut_value)
-{
-#ifdef _MSC_VER
-    return _InterlockedExchangeAdd(xut_dest, ~xut_value + 1);
-#elif defined(__GNUC__)
-    return __sync_fetch_and_sub(xut_dest, xut_value);
-#else
-    XASSERT(X_FALSE);
-    x_uint32_t xut_old = *xut_dest;
-    *xut_dest += xut_value;
-    return xut_old;
-#endif
-}
-
-/**********************************************************/
-/**
- * @brief 获取当前线程 ID 值。
- */
-static inline x_uint32_t xsys_tid(void)
-{
-#ifdef _MSC_VER
-    return (x_uint32_t)GetCurrentThreadId();
-#elif defined(__GNUC__)
-    return (x_uint32_t)syscall(__NR_gettid);
-#else
-    XASSERT(X_FALSE);
-    return 0;
-#endif
-}
 
 /**********************************************************/
 /**
