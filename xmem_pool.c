@@ -197,10 +197,10 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE_61440   61440
 #define XSLICE_SIZE_65536   65536
 
-#define XSLICE_TYPE_COUNT  88
+#define XSLICE_TYPE_COUNT   88
 
 #define XCHUNK_MIN_SIZE     (1024 * 256 )
-#define XCHUNK_MAX_SIZE     (1024 * 1028)
+#define XCHUNK_MAX_SIZE     (1024 * 1024)
 #define XCHUNK_INC_SIZE     XMEM_PAGE_SIZE
 
 /** 所有内存分片大小的数组表 */
