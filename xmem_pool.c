@@ -82,23 +82,79 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 
 #define XMEM_PAGE_SIZE      (1024 * 4)
 
-#define XSLICE_SIZE____32      32 // the  increment is 32
+/**
+ * slice size table: 
+ * 
+ * | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ----- | ----- | ----- | ----- |
+ * | step  |    8 |   16 |   32 |   64 |  128 |  256 |   512 |  1024 |  2048 |  4096 |   X   |
+ * | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ----: | ----: | ----: | ----: | :---: |
+ * | size  |    8 |  144 |  288 |  576 | 1152 | 2304 |  4608 |  9216 | 18432 | 36864 |   X   |
+ * | size  |   16 |  160 |  320 |  640 | 1280 | 2560 |  5120 | 10240 | 20480 | 40960 |   X   |
+ * | size  |   24 |  176 |  352 |  704 | 1408 | 2816 |  5632 | 11264 | 22528 | 45056 |   X   |
+ * | size  |   32 |  192 |  384 |  768 | 1536 | 3072 |  6144 | 12288 | 24576 | 49152 |   X   |
+ * | size  |   40 |  208 |  416 |  832 | 1664 | 3328 |  6656 | 13312 | 26624 | 53248 |   X   |
+ * | size  |   48 |  224 |  448 |  896 | 1792 | 3584 |  7168 | 14336 | 28672 | 57344 |   X   |
+ * | size  |   56 |  240 |  480 |  960 | 1920 | 3840 |  7680 | 15360 | 30720 | 61440 |   X   |
+ * | size  |   64 |  256 |  512 | 1024 | 2048 | 4096 |  8192 | 16384 | 32768 | 65536 |   X   |
+ * | size  |   72 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |   80 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |   88 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |   96 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |  104 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |  112 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |  120 |      |      |      |      |      |       |       |       |       |   X   |
+ * | size  |  128 |      |      |      |      |      |       |       |       |       |   X   |
+ * | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ----- | ----- | ----- | ----- |
+ * | count |   16 |    8 |    8 |    8 |    8 |    8 |     8 |     8 |     8 |     8 |  88   |
+ * | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ----- | ----- | ----- | ----- |
+ */
+#define XSLICE_SIZE_____8       8
+#define XSLICE_SIZE____16      16
+#define XSLICE_SIZE____24      24
+#define XSLICE_SIZE____32      32
+#define XSLICE_SIZE____40      40
+#define XSLICE_SIZE____48      48
+#define XSLICE_SIZE____56      56
 #define XSLICE_SIZE____64      64
+#define XSLICE_SIZE____72      72
+#define XSLICE_SIZE____80      80
+#define XSLICE_SIZE____88      88
 #define XSLICE_SIZE____96      96
-#define XSLICE_SIZE___128     128 // next increment is 64
+#define XSLICE_SIZE___104     104
+#define XSLICE_SIZE___112     112
+#define XSLICE_SIZE___120     120
+#define XSLICE_SIZE___128     128
+#define XSLICE_SIZE___144     144
+#define XSLICE_SIZE___160     160
+#define XSLICE_SIZE___176     176
 #define XSLICE_SIZE___192     192
+#define XSLICE_SIZE___208     208
+#define XSLICE_SIZE___224     224
+#define XSLICE_SIZE___240     240
 #define XSLICE_SIZE___256     256
+#define XSLICE_SIZE___288     288
 #define XSLICE_SIZE___320     320
+#define XSLICE_SIZE___352     352
 #define XSLICE_SIZE___384     384
+#define XSLICE_SIZE___416     416
 #define XSLICE_SIZE___448     448
-#define XSLICE_SIZE___512     512 // next increment is 128
+#define XSLICE_SIZE___480     480
+#define XSLICE_SIZE___512     512
+#define XSLICE_SIZE___576     576
 #define XSLICE_SIZE___640     640
+#define XSLICE_SIZE___704     704
 #define XSLICE_SIZE___768     768
+#define XSLICE_SIZE___832     832
 #define XSLICE_SIZE___896     896
-#define XSLICE_SIZE__1024    1024 // next increment is 256
+#define XSLICE_SIZE___960     960
+#define XSLICE_SIZE__1024    1024
+#define XSLICE_SIZE__1152    1152
 #define XSLICE_SIZE__1280    1280
+#define XSLICE_SIZE__1408    1408
 #define XSLICE_SIZE__1536    1536
+#define XSLICE_SIZE__1664    1664
 #define XSLICE_SIZE__1792    1792
+#define XSLICE_SIZE__1920    1920
 #define XSLICE_SIZE__2048    2048
 #define XSLICE_SIZE__2304    2304
 #define XSLICE_SIZE__2560    2560
@@ -107,7 +163,7 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE__3328    3328
 #define XSLICE_SIZE__3584    3584
 #define XSLICE_SIZE__3840    3840
-#define XSLICE_SIZE__4096    4096 // next increment is 512
+#define XSLICE_SIZE__4096    4096
 #define XSLICE_SIZE__4608    4608
 #define XSLICE_SIZE__5120    5120
 #define XSLICE_SIZE__5632    5632
@@ -115,7 +171,7 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE__6656    6656
 #define XSLICE_SIZE__7168    7168
 #define XSLICE_SIZE__7680    7680
-#define XSLICE_SIZE__8192    8192 // next increment is 1024
+#define XSLICE_SIZE__8192    8192
 #define XSLICE_SIZE__9216    9216
 #define XSLICE_SIZE_10240   10240
 #define XSLICE_SIZE_11264   11264
@@ -123,7 +179,7 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE_13312   13312
 #define XSLICE_SIZE_14336   14336
 #define XSLICE_SIZE_15360   15360
-#define XSLICE_SIZE_16384   16384 // next increment is 2048
+#define XSLICE_SIZE_16384   16384
 #define XSLICE_SIZE_18432   18432
 #define XSLICE_SIZE_20480   20480
 #define XSLICE_SIZE_22528   22528
@@ -131,7 +187,7 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE_26624   26624
 #define XSLICE_SIZE_28672   28672
 #define XSLICE_SIZE_30720   30720
-#define XSLICE_SIZE_32768   32768 // next increment is 4096
+#define XSLICE_SIZE_32768   32768
 #define XSLICE_SIZE_36864   36864
 #define XSLICE_SIZE_40960   40960
 #define XSLICE_SIZE_45056   45056
@@ -141,32 +197,62 @@ typedef struct xslice_rqueue_t * xsrque_handle_t;
 #define XSLICE_SIZE_61440   61440
 #define XSLICE_SIZE_65536   65536
 
-#define XSLICE_TYPE_AMOUNT  58
+#define XSLICE_TYPE_COUNT  88
 
 #define XCHUNK_MIN_SIZE     (1024 * 256 )
 #define XCHUNK_MAX_SIZE     (1024 * 1028)
 #define XCHUNK_INC_SIZE     XMEM_PAGE_SIZE
 
 /** 所有内存分片大小的数组表 */
-static x_uint32_t X_slice_size_table[XSLICE_TYPE_AMOUNT] =
+static x_uint32_t X_slice_size_table[XSLICE_TYPE_COUNT] =
 {
+    XSLICE_SIZE_____8,
+    XSLICE_SIZE____16,
+    XSLICE_SIZE____24,
     XSLICE_SIZE____32,
+    XSLICE_SIZE____40,
+    XSLICE_SIZE____48,
+    XSLICE_SIZE____56,
     XSLICE_SIZE____64,
+    XSLICE_SIZE____72,
+    XSLICE_SIZE____80,
+    XSLICE_SIZE____88,
     XSLICE_SIZE____96,
+    XSLICE_SIZE___104,
+    XSLICE_SIZE___112,
+    XSLICE_SIZE___120,
     XSLICE_SIZE___128,
+    XSLICE_SIZE___144,
+    XSLICE_SIZE___160,
+    XSLICE_SIZE___176,
     XSLICE_SIZE___192,
+    XSLICE_SIZE___208,
+    XSLICE_SIZE___224,
+    XSLICE_SIZE___240,
     XSLICE_SIZE___256,
+    XSLICE_SIZE___288,
     XSLICE_SIZE___320,
+    XSLICE_SIZE___352,
     XSLICE_SIZE___384,
+    XSLICE_SIZE___416,
     XSLICE_SIZE___448,
+    XSLICE_SIZE___480,
     XSLICE_SIZE___512,
+    XSLICE_SIZE___576,
     XSLICE_SIZE___640,
+    XSLICE_SIZE___704,
     XSLICE_SIZE___768,
+    XSLICE_SIZE___832,
     XSLICE_SIZE___896,
+    XSLICE_SIZE___960,
     XSLICE_SIZE__1024,
+    XSLICE_SIZE__1152,
     XSLICE_SIZE__1280,
+    XSLICE_SIZE__1408,
     XSLICE_SIZE__1536,
+    XSLICE_SIZE__1664,
     XSLICE_SIZE__1792,
+    XSLICE_SIZE__1920,
     XSLICE_SIZE__2048,
     XSLICE_SIZE__2304,
     XSLICE_SIZE__2560,
@@ -441,7 +527,7 @@ typedef struct xmem_pool_t
     x_byte_t xbt_ptr[XMPOOL_RBTREE_SIZE]; ///< 此字段仅起到内存占位的作用
     } xrbtree;
 
-    xmem_class_t    xclass_ptr[XSLICE_TYPE_AMOUNT]; ///< 各个内存分类
+    xmem_class_t    xclass_ptr[XSLICE_TYPE_COUNT]; ///< 各个内存分类
 } xmem_pool_t;
 
 #define XMPOOL_RBTREE(xmpool_ptr) ((x_rbtree_ptr)(xmpool_ptr)->xrbtree.xbt_ptr)
@@ -633,54 +719,70 @@ static inline x_uint32_t xmem_chunk_capacity(
  */
 x_uint32_t xmem_align_size(x_uint32_t xut_size)
 {
-    static x_uint32_t xsize_align_32[32] =
+    static x_uint32_t xsize_align_8[32] =
     {
-          32,   64,   96,  128,  192,  192,  256,  256,
-         320,  320,  384,  384,  448,  448,  512,  512,
-         640,  640,  640,  640,  768,  768,  768,  768,
-         896,  896,  896,  896, 1024, 1024, 1024, 1024
+          8,  16,  24,  32,  40,  48,  56,  64,
+         72,  80,  88,  96, 104, 112, 120, 128,
+        144, 144, 160, 160, 176, 176, 192, 192,
+        208, 208, 224, 224, 240, 240, 256, 256
     };
 
-    static x_uint32_t xsize_align_256[28] =
+    static x_uint32_t xsize_align_32[24] =
     {
-        1280, 1536, 1792, 2048, 2304, 2560, 2816, 3072,
-        3328, 3584, 3840, 4096, 4608, 4608, 5120, 5120,
-        5632, 5632, 6144, 6144, 6656, 6656, 7168, 7168,
-        7680, 7680, 8192, 8192
+        288, 320, 352, 384, 416, 448,  480,  512, 
+        576, 576, 640, 640, 704, 704,  768,  768, 
+        832, 832, 896, 896, 960, 960, 1024, 1024
     };
 
-    static x_uint32_t xsize_align_1024[24] =
+    static x_uint32_t xsize_align_128[24] =
     {
-         9216, 10240, 11264, 12288, 13312, 14336, 15360, 16384,
-        18432, 18432, 20480, 20480, 22528, 22528, 24576, 24576,
-        26624, 26624, 28672, 28672, 30720, 30720, 32768, 32768
+        1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
+        2304, 2304, 2560, 2560, 2816, 2816, 3072, 3072,
+        3328, 3328, 3584, 3584, 3840, 3840, 4096, 4096
     };
 
-    if (xut_size <= 0)
+    static x_uint32_t xsize_align_512[24] =
     {
-        return 0;
-    }
+         4608,  5120,  5632,  6144,  6656,  7168,  7680,  8192, 
+         9216,  9216, 10240, 10240, 11264, 11264, 12288, 12288, 
+        13312, 13312, 14336, 14336, 15360, 15360, 16384, 16384
+    };
 
-#define X_TABLE_INDEX(size, align) (((size) + (align) - 1) / (align) - 1)
-    if (xut_size <= XSLICE_SIZE__8192)
+    static x_uint32_t xsize_align_2048[24] =
     {
-        if (xut_size <= XSLICE_SIZE__1024)
-            return xsize_align_32[X_TABLE_INDEX(xut_size, XSLICE_SIZE____32)];
-        return xsize_align_256[
-            X_TABLE_INDEX(xut_size - XSLICE_SIZE__1024, XSLICE_SIZE___256)];
-    }
-    else if (xut_size <= XSLICE_SIZE_32768)
-    {
-        return xsize_align_1024[
-            X_TABLE_INDEX(xut_size - XSLICE_SIZE__8192, XSLICE_SIZE__1024)];
-    }
-#undef X_TABLE_INDEX
+        18432, 20480, 22528, 24576, 26624, 28672, 30720, 32768,
+        36864, 36864, 40960, 40960, 45056, 45056, 49152, 49152,
+        53248, 53248, 57344, 57344, 61440, 61440, 65536, 65536
+    };
 
-    if (xut_size > XSLICE_SIZE_65536)
-        xut_size += sizeof(xmem_chunk_t);
-
+#define X_INDEX(size, align) (((size) + (align) - 1) / (align) - 1)
 #define X_ALIGN(size, align) (((size) + ((align) - 1)) & (~((align) - 1)))
+
+    if (xut_size <= 1024)
+    {
+        if (xut_size <= 256)
+        {
+            if (xut_size <= 0)
+                return 0;
+            return xsize_align_8[X_INDEX(xut_size, 8)];
+        }
+        return xsize_align_32[X_INDEX(xut_size - 256, 32)];
+    }
+    else if (xut_size <= 16384)
+    {
+        if (xut_size <= 4096)
+            return xsize_align_128[X_INDEX(xut_size - 1024, 128)];
+        return xsize_align_512[X_INDEX(xut_size - 4096, 512)];
+    }
+    else if (xut_size <= 65536)
+    {
+        return xsize_align_2048[X_INDEX(xut_size - 16384, 2048)];
+    }
+
+    xut_size += sizeof(xmem_chunk_t);
     return X_ALIGN(xut_size, XMEM_PAGE_SIZE);
+
+#undef X_INDEX
 #undef X_ALIGN
 }
 
@@ -1331,7 +1433,7 @@ static x_void_t xmpool_class_initialize(xmpool_handle_t xmpool_ptr)
     x_uint32_t xut_minusd = XCHUNK_MAX_SIZE;
     x_uint32_t xut_expect = 0;
 
-    for (xit_iter = 0; xit_iter < XSLICE_TYPE_AMOUNT; ++xit_iter)
+    for (xit_iter = 0; xit_iter < XSLICE_TYPE_COUNT; ++xit_iter)
     {
         //======================================
 
@@ -1392,7 +1494,7 @@ static x_void_t xmpool_class_release(xmpool_handle_t xmpool_ptr)
     x_int32_t       xit_iter   = 0;
     xclass_handle_t xclass_ptr = X_NULL;
 
-    for (xit_iter = 0; xit_iter < XSLICE_TYPE_AMOUNT; ++xit_iter)
+    for (xit_iter = 0; xit_iter < XSLICE_TYPE_COUNT; ++xit_iter)
     {
         xclass_ptr = &xmpool_ptr->xclass_ptr[xit_iter];
 
@@ -1418,67 +1520,96 @@ static xclass_handle_t xmpool_get_class(
 
     switch (xslice_size)
     {
-    case XSLICE_SIZE____32: xclass_ptr = &xmpool_ptr->xclass_ptr[ 0]; break;
-    case XSLICE_SIZE____64: xclass_ptr = &xmpool_ptr->xclass_ptr[ 1]; break;
-    case XSLICE_SIZE____96: xclass_ptr = &xmpool_ptr->xclass_ptr[ 2]; break;
-    case XSLICE_SIZE___128: xclass_ptr = &xmpool_ptr->xclass_ptr[ 3]; break;
-    case XSLICE_SIZE___192: xclass_ptr = &xmpool_ptr->xclass_ptr[ 4]; break;
-    case XSLICE_SIZE___256: xclass_ptr = &xmpool_ptr->xclass_ptr[ 5]; break;
-    case XSLICE_SIZE___320: xclass_ptr = &xmpool_ptr->xclass_ptr[ 6]; break;
-    case XSLICE_SIZE___384: xclass_ptr = &xmpool_ptr->xclass_ptr[ 7]; break;
-    case XSLICE_SIZE___448: xclass_ptr = &xmpool_ptr->xclass_ptr[ 8]; break;
-    case XSLICE_SIZE___512: xclass_ptr = &xmpool_ptr->xclass_ptr[ 9]; break;
-    case XSLICE_SIZE___640: xclass_ptr = &xmpool_ptr->xclass_ptr[10]; break;
-    case XSLICE_SIZE___768: xclass_ptr = &xmpool_ptr->xclass_ptr[11]; break;
-    case XSLICE_SIZE___896: xclass_ptr = &xmpool_ptr->xclass_ptr[12]; break;
-    case XSLICE_SIZE__1024: xclass_ptr = &xmpool_ptr->xclass_ptr[13]; break;
-    case XSLICE_SIZE__1280: xclass_ptr = &xmpool_ptr->xclass_ptr[14]; break;
-    case XSLICE_SIZE__1536: xclass_ptr = &xmpool_ptr->xclass_ptr[15]; break;
-    case XSLICE_SIZE__1792: xclass_ptr = &xmpool_ptr->xclass_ptr[16]; break;
-    case XSLICE_SIZE__2048: xclass_ptr = &xmpool_ptr->xclass_ptr[17]; break;
-    case XSLICE_SIZE__2304: xclass_ptr = &xmpool_ptr->xclass_ptr[18]; break;
-    case XSLICE_SIZE__2560: xclass_ptr = &xmpool_ptr->xclass_ptr[19]; break;
-    case XSLICE_SIZE__2816: xclass_ptr = &xmpool_ptr->xclass_ptr[20]; break;
-    case XSLICE_SIZE__3072: xclass_ptr = &xmpool_ptr->xclass_ptr[21]; break;
-    case XSLICE_SIZE__3328: xclass_ptr = &xmpool_ptr->xclass_ptr[22]; break;
-    case XSLICE_SIZE__3584: xclass_ptr = &xmpool_ptr->xclass_ptr[23]; break;
-    case XSLICE_SIZE__3840: xclass_ptr = &xmpool_ptr->xclass_ptr[24]; break;
-    case XSLICE_SIZE__4096: xclass_ptr = &xmpool_ptr->xclass_ptr[25]; break;
-    case XSLICE_SIZE__4608: xclass_ptr = &xmpool_ptr->xclass_ptr[26]; break;
-    case XSLICE_SIZE__5120: xclass_ptr = &xmpool_ptr->xclass_ptr[27]; break;
-    case XSLICE_SIZE__5632: xclass_ptr = &xmpool_ptr->xclass_ptr[28]; break;
-    case XSLICE_SIZE__6144: xclass_ptr = &xmpool_ptr->xclass_ptr[29]; break;
-    case XSLICE_SIZE__6656: xclass_ptr = &xmpool_ptr->xclass_ptr[30]; break;
-    case XSLICE_SIZE__7168: xclass_ptr = &xmpool_ptr->xclass_ptr[31]; break;
-    case XSLICE_SIZE__7680: xclass_ptr = &xmpool_ptr->xclass_ptr[32]; break;
-    case XSLICE_SIZE__8192: xclass_ptr = &xmpool_ptr->xclass_ptr[33]; break;
-    case XSLICE_SIZE__9216: xclass_ptr = &xmpool_ptr->xclass_ptr[34]; break;
-    case XSLICE_SIZE_10240: xclass_ptr = &xmpool_ptr->xclass_ptr[35]; break;
-    case XSLICE_SIZE_11264: xclass_ptr = &xmpool_ptr->xclass_ptr[36]; break;
-    case XSLICE_SIZE_12288: xclass_ptr = &xmpool_ptr->xclass_ptr[37]; break;
-    case XSLICE_SIZE_13312: xclass_ptr = &xmpool_ptr->xclass_ptr[38]; break;
-    case XSLICE_SIZE_14336: xclass_ptr = &xmpool_ptr->xclass_ptr[39]; break;
-    case XSLICE_SIZE_15360: xclass_ptr = &xmpool_ptr->xclass_ptr[40]; break;
-    case XSLICE_SIZE_16384: xclass_ptr = &xmpool_ptr->xclass_ptr[41]; break;
-    case XSLICE_SIZE_18432: xclass_ptr = &xmpool_ptr->xclass_ptr[42]; break;
-    case XSLICE_SIZE_20480: xclass_ptr = &xmpool_ptr->xclass_ptr[43]; break;
-    case XSLICE_SIZE_22528: xclass_ptr = &xmpool_ptr->xclass_ptr[44]; break;
-    case XSLICE_SIZE_24576: xclass_ptr = &xmpool_ptr->xclass_ptr[45]; break;
-    case XSLICE_SIZE_26624: xclass_ptr = &xmpool_ptr->xclass_ptr[46]; break;
-    case XSLICE_SIZE_28672: xclass_ptr = &xmpool_ptr->xclass_ptr[47]; break;
-    case XSLICE_SIZE_30720: xclass_ptr = &xmpool_ptr->xclass_ptr[48]; break;
-    case XSLICE_SIZE_32768: xclass_ptr = &xmpool_ptr->xclass_ptr[49]; break;
-    case XSLICE_SIZE_36864: xclass_ptr = &xmpool_ptr->xclass_ptr[50]; break;
-    case XSLICE_SIZE_40960: xclass_ptr = &xmpool_ptr->xclass_ptr[51]; break;
-    case XSLICE_SIZE_45056: xclass_ptr = &xmpool_ptr->xclass_ptr[52]; break;
-    case XSLICE_SIZE_49152: xclass_ptr = &xmpool_ptr->xclass_ptr[53]; break;
-    case XSLICE_SIZE_53248: xclass_ptr = &xmpool_ptr->xclass_ptr[54]; break;
-    case XSLICE_SIZE_57344: xclass_ptr = &xmpool_ptr->xclass_ptr[55]; break;
-    case XSLICE_SIZE_61440: xclass_ptr = &xmpool_ptr->xclass_ptr[56]; break;
-    case XSLICE_SIZE_65536: xclass_ptr = &xmpool_ptr->xclass_ptr[57]; break;
+    case XSLICE_SIZE_____8 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 0]; break;
+    case XSLICE_SIZE____16 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 1]; break;
+    case XSLICE_SIZE____24 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 2]; break;
+    case XSLICE_SIZE____32 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 3]; break;
+    case XSLICE_SIZE____40 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 4]; break;
+    case XSLICE_SIZE____48 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 5]; break;
+    case XSLICE_SIZE____56 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 6]; break;
+    case XSLICE_SIZE____64 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 7]; break;
+    case XSLICE_SIZE____72 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 8]; break;
+    case XSLICE_SIZE____80 : xclass_ptr = &xmpool_ptr->xclass_ptr[ 9]; break;
+    case XSLICE_SIZE____88 : xclass_ptr = &xmpool_ptr->xclass_ptr[10]; break;
+    case XSLICE_SIZE____96 : xclass_ptr = &xmpool_ptr->xclass_ptr[11]; break;
+    case XSLICE_SIZE___104 : xclass_ptr = &xmpool_ptr->xclass_ptr[12]; break;
+    case XSLICE_SIZE___112 : xclass_ptr = &xmpool_ptr->xclass_ptr[13]; break;
+    case XSLICE_SIZE___120 : xclass_ptr = &xmpool_ptr->xclass_ptr[14]; break;
+    case XSLICE_SIZE___128 : xclass_ptr = &xmpool_ptr->xclass_ptr[15]; break;
+    case XSLICE_SIZE___144 : xclass_ptr = &xmpool_ptr->xclass_ptr[16]; break;
+    case XSLICE_SIZE___160 : xclass_ptr = &xmpool_ptr->xclass_ptr[17]; break;
+    case XSLICE_SIZE___176 : xclass_ptr = &xmpool_ptr->xclass_ptr[18]; break;
+    case XSLICE_SIZE___192 : xclass_ptr = &xmpool_ptr->xclass_ptr[19]; break;
+    case XSLICE_SIZE___208 : xclass_ptr = &xmpool_ptr->xclass_ptr[20]; break;
+    case XSLICE_SIZE___224 : xclass_ptr = &xmpool_ptr->xclass_ptr[21]; break;
+    case XSLICE_SIZE___240 : xclass_ptr = &xmpool_ptr->xclass_ptr[22]; break;
+    case XSLICE_SIZE___256 : xclass_ptr = &xmpool_ptr->xclass_ptr[23]; break;
+    case XSLICE_SIZE___288 : xclass_ptr = &xmpool_ptr->xclass_ptr[24]; break;
+    case XSLICE_SIZE___320 : xclass_ptr = &xmpool_ptr->xclass_ptr[25]; break;
+    case XSLICE_SIZE___352 : xclass_ptr = &xmpool_ptr->xclass_ptr[26]; break;
+    case XSLICE_SIZE___384 : xclass_ptr = &xmpool_ptr->xclass_ptr[27]; break;
+    case XSLICE_SIZE___416 : xclass_ptr = &xmpool_ptr->xclass_ptr[28]; break;
+    case XSLICE_SIZE___448 : xclass_ptr = &xmpool_ptr->xclass_ptr[29]; break;
+    case XSLICE_SIZE___480 : xclass_ptr = &xmpool_ptr->xclass_ptr[30]; break;
+    case XSLICE_SIZE___512 : xclass_ptr = &xmpool_ptr->xclass_ptr[31]; break;
+    case XSLICE_SIZE___576 : xclass_ptr = &xmpool_ptr->xclass_ptr[32]; break;
+    case XSLICE_SIZE___640 : xclass_ptr = &xmpool_ptr->xclass_ptr[33]; break;
+    case XSLICE_SIZE___704 : xclass_ptr = &xmpool_ptr->xclass_ptr[34]; break;
+    case XSLICE_SIZE___768 : xclass_ptr = &xmpool_ptr->xclass_ptr[35]; break;
+    case XSLICE_SIZE___832 : xclass_ptr = &xmpool_ptr->xclass_ptr[36]; break;
+    case XSLICE_SIZE___896 : xclass_ptr = &xmpool_ptr->xclass_ptr[37]; break;
+    case XSLICE_SIZE___960 : xclass_ptr = &xmpool_ptr->xclass_ptr[38]; break;
+    case XSLICE_SIZE__1024 : xclass_ptr = &xmpool_ptr->xclass_ptr[39]; break;
+    case XSLICE_SIZE__1152 : xclass_ptr = &xmpool_ptr->xclass_ptr[40]; break;
+    case XSLICE_SIZE__1280 : xclass_ptr = &xmpool_ptr->xclass_ptr[41]; break;
+    case XSLICE_SIZE__1408 : xclass_ptr = &xmpool_ptr->xclass_ptr[42]; break;
+    case XSLICE_SIZE__1536 : xclass_ptr = &xmpool_ptr->xclass_ptr[43]; break;
+    case XSLICE_SIZE__1664 : xclass_ptr = &xmpool_ptr->xclass_ptr[44]; break;
+    case XSLICE_SIZE__1792 : xclass_ptr = &xmpool_ptr->xclass_ptr[45]; break;
+    case XSLICE_SIZE__1920 : xclass_ptr = &xmpool_ptr->xclass_ptr[46]; break;
+    case XSLICE_SIZE__2048 : xclass_ptr = &xmpool_ptr->xclass_ptr[47]; break;
+    case XSLICE_SIZE__2304 : xclass_ptr = &xmpool_ptr->xclass_ptr[48]; break;
+    case XSLICE_SIZE__2560 : xclass_ptr = &xmpool_ptr->xclass_ptr[49]; break;
+    case XSLICE_SIZE__2816 : xclass_ptr = &xmpool_ptr->xclass_ptr[50]; break;
+    case XSLICE_SIZE__3072 : xclass_ptr = &xmpool_ptr->xclass_ptr[51]; break;
+    case XSLICE_SIZE__3328 : xclass_ptr = &xmpool_ptr->xclass_ptr[52]; break;
+    case XSLICE_SIZE__3584 : xclass_ptr = &xmpool_ptr->xclass_ptr[53]; break;
+    case XSLICE_SIZE__3840 : xclass_ptr = &xmpool_ptr->xclass_ptr[54]; break;
+    case XSLICE_SIZE__4096 : xclass_ptr = &xmpool_ptr->xclass_ptr[55]; break;
+    case XSLICE_SIZE__4608 : xclass_ptr = &xmpool_ptr->xclass_ptr[56]; break;
+    case XSLICE_SIZE__5120 : xclass_ptr = &xmpool_ptr->xclass_ptr[57]; break;
+    case XSLICE_SIZE__5632 : xclass_ptr = &xmpool_ptr->xclass_ptr[58]; break;
+    case XSLICE_SIZE__6144 : xclass_ptr = &xmpool_ptr->xclass_ptr[59]; break;
+    case XSLICE_SIZE__6656 : xclass_ptr = &xmpool_ptr->xclass_ptr[60]; break;
+    case XSLICE_SIZE__7168 : xclass_ptr = &xmpool_ptr->xclass_ptr[61]; break;
+    case XSLICE_SIZE__7680 : xclass_ptr = &xmpool_ptr->xclass_ptr[62]; break;
+    case XSLICE_SIZE__8192 : xclass_ptr = &xmpool_ptr->xclass_ptr[63]; break;
+    case XSLICE_SIZE__9216 : xclass_ptr = &xmpool_ptr->xclass_ptr[64]; break;
+    case XSLICE_SIZE_10240 : xclass_ptr = &xmpool_ptr->xclass_ptr[65]; break;
+    case XSLICE_SIZE_11264 : xclass_ptr = &xmpool_ptr->xclass_ptr[66]; break;
+    case XSLICE_SIZE_12288 : xclass_ptr = &xmpool_ptr->xclass_ptr[67]; break;
+    case XSLICE_SIZE_13312 : xclass_ptr = &xmpool_ptr->xclass_ptr[68]; break;
+    case XSLICE_SIZE_14336 : xclass_ptr = &xmpool_ptr->xclass_ptr[69]; break;
+    case XSLICE_SIZE_15360 : xclass_ptr = &xmpool_ptr->xclass_ptr[70]; break;
+    case XSLICE_SIZE_16384 : xclass_ptr = &xmpool_ptr->xclass_ptr[71]; break;
+    case XSLICE_SIZE_18432 : xclass_ptr = &xmpool_ptr->xclass_ptr[72]; break;
+    case XSLICE_SIZE_20480 : xclass_ptr = &xmpool_ptr->xclass_ptr[73]; break;
+    case XSLICE_SIZE_22528 : xclass_ptr = &xmpool_ptr->xclass_ptr[74]; break;
+    case XSLICE_SIZE_24576 : xclass_ptr = &xmpool_ptr->xclass_ptr[75]; break;
+    case XSLICE_SIZE_26624 : xclass_ptr = &xmpool_ptr->xclass_ptr[76]; break;
+    case XSLICE_SIZE_28672 : xclass_ptr = &xmpool_ptr->xclass_ptr[77]; break;
+    case XSLICE_SIZE_30720 : xclass_ptr = &xmpool_ptr->xclass_ptr[78]; break;
+    case XSLICE_SIZE_32768 : xclass_ptr = &xmpool_ptr->xclass_ptr[79]; break;
+    case XSLICE_SIZE_36864 : xclass_ptr = &xmpool_ptr->xclass_ptr[80]; break;
+    case XSLICE_SIZE_40960 : xclass_ptr = &xmpool_ptr->xclass_ptr[81]; break;
+    case XSLICE_SIZE_45056 : xclass_ptr = &xmpool_ptr->xclass_ptr[82]; break;
+    case XSLICE_SIZE_49152 : xclass_ptr = &xmpool_ptr->xclass_ptr[83]; break;
+    case XSLICE_SIZE_53248 : xclass_ptr = &xmpool_ptr->xclass_ptr[84]; break;
+    case XSLICE_SIZE_57344 : xclass_ptr = &xmpool_ptr->xclass_ptr[85]; break;
+    case XSLICE_SIZE_61440 : xclass_ptr = &xmpool_ptr->xclass_ptr[86]; break;
+    case XSLICE_SIZE_65536 : xclass_ptr = &xmpool_ptr->xclass_ptr[87]; break;
 
-    default:
-        break;
+    default: break;
     }
 
     XASSERT_CHECK(X_NULL != xclass_ptr, xslice_size == xclass_ptr->xslice_size);
@@ -1905,7 +2036,7 @@ x_void_t xmpool_release_unused(xmpool_handle_t xmpool_ptr)
 
     x_int32_t xit_iter = 0;
 
-    for (xit_iter = 0; xit_iter < XSLICE_TYPE_AMOUNT; ++xit_iter)
+    for (xit_iter = 0; xit_iter < XSLICE_TYPE_COUNT; ++xit_iter)
     {
         xclass_ptr = &xmpool_ptr->xclass_ptr[xit_iter];
 
