@@ -28,9 +28,6 @@
 /** 堆内存块的类型定义 */
 typedef x_void_t * xmheap_chunk_t;
 
-/** 堆内存分片的类型定义 */
-typedef x_byte_t * xmheap_slice_t;
-
 /** 堆内存管理的结构体声明 */
 struct xmem_heap_t;
 
