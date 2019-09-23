@@ -942,6 +942,39 @@ static x_void_t xmheap_block_list_push_tail(
     XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr)->xlist_node.xblock_prev = xblock_ptr;
 }
 
+/**********************************************************/
+/**
+ * @brief 初始化 堆内存区块 管理链表。
+ */
+static x_void_t xmheap_block_list_init(xmheap_handle_t xmheap_ptr)
+{
+    XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr)->
+            xlist_node.xblock_prev = X_NULL;
+    XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr)->
+            xlist_node.xblock_next = XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr);
+    XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr)->
+            xlist_node.xblock_prev = XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr);
+    XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr)->
+            xlist_node.xblock_next = X_NULL;
+}
+
+/**********************************************************/
+/**
+ * @brief 释放管理链表中的所有 堆内存区块。
+ */
+static x_void_t xmheap_block_list_release(xmheap_handle_t xmheap_ptr)
+{
+    xblock_handle_t xblock_tmp = X_NULL;
+    xblock_handle_t xblock_ptr = XMHEAP_BLOCK_LIST_FRONT(xmheap_ptr);
+    while (xblock_ptr != XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr))
+    {
+        xblock_tmp = xblock_ptr->xlist_node.xblock_next;
+        xmheap_block_list_erase(xmheap_ptr, xblock_ptr);
+        xmheap_block_free(xmheap_ptr, xblock_ptr);
+        xblock_ptr = xblock_tmp;
+    }
+}
+
 //====================================================================
 
 /**********************************************************/
@@ -1024,8 +1057,6 @@ static xarray_ctxptr_t xmheap_array_get_non_empty(xmheap_handle_t xmheap_ptr)
 
     return X_NULL;
 }
-
-//====================================================================
 
 /**********************************************************/
 /**
@@ -1173,9 +1204,14 @@ static x_int32_t xmheap_array_recyc_cctxt(
 
         if (0 == xarray_ptr->xslice_queue.xut_epos)
         {
-            xarray_ptr->xslice_queue.xut_epos  = XSLICE_QUEUE_COUNT(xarray_ptr, x_uint32_t);
-            xarray_ptr->xslice_queue.xut_bpos %= xarray_ptr->xslice_queue.xut_capacity;
-            xarray_ptr->xslice_queue.xut_epos += xarray_ptr->xslice_queue.xut_bpos;
+            xarray_ptr->xslice_queue.xut_epos =
+                XSLICE_QUEUE_COUNT(xarray_ptr, x_uint32_t);
+
+            xarray_ptr->xslice_queue.xut_bpos %=
+                xarray_ptr->xslice_queue.xut_capacity;
+
+            xarray_ptr->xslice_queue.xut_epos +=
+                xarray_ptr->xslice_queue.xut_bpos;
         }
 
         //======================================
@@ -1218,6 +1254,21 @@ xmheap_handle_t xmheap_create(void)
     xmem_clear(xmheap_ptr, sizeof(xmem_heap_t));
 
     //======================================
+    // 堆内存区块管理
+
+    xmheap_block_list_init(xmheap_ptr);
+
+    //======================================
+    // 已分配内存块的信息管理
+
+    XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr)->
+            xlist_node.xarray_prev = X_NULL;
+    XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr)->
+            xlist_node.xarray_next = XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr);
+    XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr)->
+            xlist_node.xarray_prev = XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr);
+    XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr)->
+            xlist_node.xarray_next = X_NULL;
 
     xrbtree_emplace_create(XMHEAP_RBTREE(xmheap_ptr),
                            sizeof(xchunk_ctxptr_t),
@@ -1239,6 +1290,8 @@ x_void_t xmheap_destroy(xmheap_handle_t xmheap_ptr)
     //======================================
 
     xrbtree_emplace_destroy(XMHEAP_RBTREE(xmheap_ptr));
+
+    xmheap_block_list_release(xmheap_ptr);
 
     //======================================
 
