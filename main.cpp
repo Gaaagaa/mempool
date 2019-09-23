@@ -1,6 +1,5 @@
 ﻿
-#include "xtypes.h"
-#include "xmem_pool.h"
+#include "xmem_comm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
