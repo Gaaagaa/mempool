@@ -20,6 +20,7 @@
  * </pre>
  */
 
+#include "xmem_comm.h"
 #include "xmem_heap.h"
 #include "xrbtree.h"
 
@@ -28,39 +29,116 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef ENABLE_XASSERT
-#if ((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 1
-#else // !((defined _DEBUG) || (defined DEBUG))
-#define ENABLE_XASSERT 0
-#endif // ((defined _DEBUG) || (defined DEBUG))
-#endif // ENABLE_XASSERT
+//====================================================================
 
-#ifndef XASSERT
-#if ENABLE_XASSERT
-#include <assert.h>
-#define XASSERT(xptr)    assert(xptr)
-#else // !ENABLE_XASSERT
-#define XASSERT(xptr)
-#endif // ENABLE_XASSERT
-#endif // XASSERT
+struct xmem_block_t;
+struct xchunk_context_t;
+struct xarray_cctxt_t;
 
-#if ENABLE_XASSERT
-#define XASSERT_CHECK(xcheck, xptr)  do { if ((xcheck)) XASSERT(xptr); } while (0)
-#else // !ENABLE_XASSERT
-#define XASSERT_CHECK(xcheck, xptr)
-#endif // ENABLE_XASSERT
+typedef volatile x_uint32_t       xatomic_lock_t;
+typedef struct xmem_block_t     * xblock_handle_t;
+typedef struct xchunk_context_t * xchunk_ctxptr_t;
+typedef struct xarray_cctxt_t   * xarray_ctxptr_t;
 
-/////////////////////////////////////////////////////////////////////////////////
-#if 0
+#define XMHEAP_PAGE_SIZE    XMEM_PAGE_SIZE
+#define XMHEAP_RBTREE_SIZE  (16 * sizeof(x_handle_t))
+#define XMHEAP_RBNODE_SIZE  ( 5 * sizeof(x_handle_t))
+
+/** 比特位的 0 位判断 */
+#define XMEM_BITS_IS_0(xmem_bits, xut_bpos) \
+    (0 == ((xmem_bits)[(xut_bpos) / 8] & ((x_byte_t)(1 << ((xut_bpos) % 8)))))
+
+/** 比特位的 1 位判断 */
+#define XMEM_BITS_IS_1(xmem_bits, xut_bpos) \
+    (0 != ((xmem_bits)[(xut_bpos) / 8] & ((x_byte_t)(1 << ((xut_bpos) % 8)))))
+
+//====================================================================
+
 /**
- * @struct xarray_rbncctx_t
- * @brief  xchunk_context_t 的红黑树节点缓存块的结构体描述信息。
+ * @struct xmem_block_t
+ * @brief  堆内存区块描述信息的结构体。
  */
-typedef struct xarray_rbncctx_t
+typedef struct xmem_block_t
 {
-    x_uint32_t      xut_size;      ///< 对象的缓存大小
+    /**
+     * @brief 当前 block 对象所在堆管理的双向链表节点信息。
+     */
+    struct
+    {
+    xblock_handle_t xblock_prev;   ///< 前驱节点
+    xblock_handle_t xblock_next;   ///< 后继节点
+    } xlist_node;
 
+    x_uint32_t      xblock_size;   ///< 堆内存区块的大小
+    x_uint32_t      xmpage_size;   ///< 分页大小
+    x_uint32_t      xmpage_nums;   ///< 分页数量
+    x_uint32_t      xmpage_rems;   ///< 分页剩余数量
+
+    x_uint32_t      xmpage_offset; ///< 分页起始地址的偏移量
+    x_uint32_t      xmpage_cursor; ///< 分页 申请/释放 操作时的游标位置
+    x_byte_t        xmpage_bit[0]; ///< 分页是否被（分配出去）占用的位标识数组
+} xmem_block_t;
+
+/** 获取 xmem_block_t 的起始分页地址 */
+#define XBLOCK_PAGE_BEGIN(xblock_ptr) \
+    ((xmem_slice_t)(xblock_ptr) + (xblock_ptr)->xmpage_offset)
+
+/** 获取 xmem_block_t 的指定分页地址 */
+#define XBLOCK_PAGE_ADDR(xblock_ptr, xut_index) \
+    (XBLOCK_PAGE_BEGIN(xblock_ptr) + (xut_index) * (xblock_ptr)->xmpage_size)
+
+/** 获取 xmem_block_t 的结束分页地址 */
+#define XBLOCK_PAGE_END(xblock_ptr) \
+    ((xmem_slice_t)(xblock_ptr) + (xblock_ptr)->xblock_size)
+
+/**
+ * @struct xblock_alias_t
+ * @brief 定义伪 block 的链表节点结构体，用于 双向链表 的 头部/尾部。
+ * @note xblock_alias_t 与 xmem_block_t 首部字段必须一致。
+ */
+typedef struct xblock_alias_t
+{
+    /**
+     * @brief 当前 block 对象所在堆管理的双向链表节点信息。
+     */
+    struct
+    {
+    xblock_handle_t xblock_prev;   ///< 前驱节点
+    xblock_handle_t xblock_next;   ///< 后继节点
+    } xlist_node;
+} xblock_alias_t;
+
+//====================================================================
+
+/**
+ * @struct xchunk_context_t
+ * @brief  内存块上下文描述信息的结构体。
+ */
+typedef struct xchunk_context_t
+{
+    x_uint32_t      xchunk_size;   ///< 对应的 chunk 大小
+    xmheap_chunk_t  xchunk_ptr;    ///< 指向对应的 chunk 地址
+    x_handle_t      xowner_ptr;  ///< 持有该 chunk 的标识句柄
+
+    xblock_handle_t xblock_ptr;    ///< chunk 缓存所在的 block
+    xarray_ctxptr_t xarray_ptr;    ///< 所隶属的 xarray_cctxt_t 缓存数组
+
+    /**
+     * @brief 用于红黑树的节点占位结构体，
+     * 记录当前 xchunk_context_t 对象在存储管理中的位置信息。
+     */
+    struct
+    {
+    x_byte_t xbt_ptr[XMHEAP_RBNODE_SIZE]; ///< 此字段仅起到内存占位的作用
+    } xtree_node;
+} xchunk_context_t;
+
+/**
+ * @struct xarray_cctxt_t
+ * @brief xchunk_context_t 对象缓存数组块的结构体描述信息。
+ */
+typedef struct xarray_cctxt_t
+{
     /**
      * @brief 双向链表节点信息。
      */
@@ -70,27 +148,31 @@ typedef struct xarray_rbncctx_t
     xarray_ctxptr_t xarray_next;   ///< 后继节点
     } xlist_node;
 
-    /**
-     * @brief 节点分片索引号队列。
-     * @note
-     * 此为一个环形队列，xut_index[] 数组中的值，
-     * 第 0~14 位 表示节点分片索引号，
-     * 第  15  位 表示节点分片是否已经分配出去。
-     */
-    struct
-    {
-    x_uint16_t      xut_offset;    ///< 节点分片组的首地址偏移量
-    x_uint16_t      xut_capacity;  ///< 队列的节点分片索引数组容量
-    x_uint16_t      xut_bpos;      ///< 队列的节点分片索引数组起始位置
-    x_uint16_t      xut_epos;      ///< 队列的节点分片索引数组结束位置
-    x_uint16_t      xut_index[0];  ///< 队列的节点分片索引数组
-    } xnode_queue;
-} xarray_rbncctx_t;
+    x_uint32_t      xarray_size;   ///< 对象的缓存大小
+    x_uint32_t      xslice_size;   ///< 分片大小（sizeof(xchunk_context_t)）
 
+    /**
+     * @brief 节点分片索引号队列（xchunk_context_t 缓存队列）。
+     */
+    XSLICE_QUEUE_DEFINED(x_uint32_t);
+} xarray_cctxt_t;
+
+#define XARRAY_BLOCK_SIZE  (XMHEAP_PAGE_SIZE * XMHEAP_PAGE_SIZE)
+#define XARRAY_SLICE_SIZE  (sizeof(xchunk_context_t))
+
+/** xarray_cctxt_t 对象的左（起始）地址（xmem_slice_t 类型指针） */
+#define XARRAY_LADDR(xarray_ptr) ((xmem_slice_t)(xarray_ptr))
+
+/** xarray_cctxt_t 对象的右（结束）地址（xmem_slice_t 类型指针） */
+#define XARRAY_RADDR(xarray_ptr) \
+    (XARRAY_LADDR(xarray_ptr) + (xarray_ptr)->xarray_size)
+
+/**
+ * @struct xarray_alias_t
+ * @brief xarray_cctxt_t 的伪结构体，用于双向链表的 头部/尾部 节点。
+ */
 typedef struct xarray_alias_t
 {
-    x_uint32_t      xut_size;      ///< 占位字段，始终为 0
-
     /**
      * @brief 双向链表节点信息。
      */
@@ -100,63 +182,8 @@ typedef struct xarray_alias_t
     xarray_ctxptr_t xarray_next;   ///< 后继节点
     } xlist_node;
 } xarray_alias_t;
-#endif
-////////////////////////////////////////////////////////////////////////////////
 
-struct xchunk_context_t;
-struct xarray_rbncctx_t;
-
-typedef struct xchunk_context_t * xchunk_ctxptr_t;
-typedef struct xarray_rbncctx_t * xarray_ctxptr_t;
-
-#define XMHEAP_RBTREE_SIZE  (16 * sizeof(x_handle_t))
-#define XMHEAP_RBNODE_SIZE  ( 5 * sizeof(x_handle_t))
-
-/**
- * @struct xmheap_rbtree_t
- * @brief  xmem_heap_t 内使用的红黑树占位结构体。
- */
-typedef struct xmheap_rbtree_t
-{
-    x_byte_t xbt_ptr[XMHEAP_RBTREE_SIZE]; ///< 此字段仅起到内存占位的作用
-} xmheap_rbtree_t;
-
-/**
- * @struct xcctxt_rbnode_t
- * @brief  xchunk_context_t 内使用的红黑树节点占位结构体。
- */
-typedef struct xcctxt_rbnode_t
-{
-    x_byte_t xbt_ptr[XMHEAP_RBNODE_SIZE]; ///< 此字段仅起到内存占位的作用
-} xcctxt_rbnode_t;
-
-/**
- * @enum  xenum_chunk_status_t
- * @brief 内存块的状态枚举值。
- */
-typedef enum xenum_chunk_status_t
-{
-    XCHUNK_STATUS_ALLOC = 0x00000010, ///< 被分配
-    XCHUNK_STATUS_RECYC = 0x00000020, ///< 已回收
-} xenum_chunk_status_t;
-
-/**
- * @struct xchunk_context_t
- * @brief  内存块上下文描述信息的结构体。
- */
-typedef struct xchunk_context_t
-{
-    x_uint32_t      xchunk_size;   ///< 对应的内存块大小
-    x_uint32_t      xchunk_status; ///< 内存块状态标识（@see xenum_chunk_status_t）
-    x_uint64_t      xchunk_time;   ///< 时间戳（分配 或 超时释放 的时间点）
-    x_handle_t      xchunk_ptr;    ///< 指向对应的内存块地址
-    x_handle_t      xchunk_owner;  ///< 持有该内存块的标识句柄
-    x_handle_t      xarray_ptr;    ///< 当前对象所隶属的缓存数组
-
-    xcctxt_rbnode_t xrbnode_alloc; ///< 用于（分配操作的）红黑树的节点
-    xcctxt_rbnode_t xrbnode_recyc; ///< 用于（回收操作的）红黑树的节点
-    xcctxt_rbnode_t xrbnode_tmout; ///< 用于（超时释放的）红黑树的节点
-} xchunk_context_t;
+//====================================================================
 
 /**
  * @struct xmem_heap_t
@@ -164,19 +191,69 @@ typedef struct xchunk_context_t
  */
 typedef struct xmem_heap_t
 {
-    xmheap_rbtree_t xrbtree_alloc; ///< 红黑树：保存分配操作的 chunk 节点
-    xmheap_rbtree_t xrbtree_recyc; ///< 红黑树：保存回收操作的 chunk 节点
-    xmheap_rbtree_t xrbtree_tmout; ///< 红黑树：保存超时释放的 chunk 节点
+    xatomic_lock_t  xmheap_lock;   ///< 访问操作的原子旋转锁
+
+    /**
+     * @brief 保存所有向系统申请的 xmem_block_t 对象的双向链表。
+     */
+    struct
+    {
+    xblock_alias_t  xlist_head;    ///< 双向链表的头部伪 block 节点
+    xblock_alias_t  xlist_tail;    ///< 双向链表的尾部伪 block 节点
+    } xlist_block;
+
+    /**
+     * @brief 保存所有向系统申请的 xarray_cctxt_t 对象的双向链表。
+     */
+    struct
+    {
+    xarray_alias_t  xlist_head;    ///< 双向链表的头部伪 block 节点
+    xarray_alias_t  xlist_tail;    ///< 双向链表的尾部伪 block 节点
+    } xlist_array;
+
+    /**
+     * @brief 记录所有分配出去的 chunk 上下文信息（xchunk_context_t）的红黑树。
+     */
+    struct
+    {
+    x_byte_t xbt_ptr[XMHEAP_RBTREE_SIZE]; ///< 此字段仅起到内存占位的作用
+    } xrbtree;
 } xmem_heap_t;
 
-#define XMHEAP_RBTREE_ALLOC(xmheap_ptr) \
-    ((x_rbtree_ptr)(xmheap_ptr)->xrbtree_alloc.xbt_ptr)
+/** xmem_block_t 链表头部节点 */
+#define XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr)  \
+            ((xblock_handle_t)&(xmheap_ptr)->xlist_block.xlist_head)
 
-#define XMHEAP_RBTREE_RECYC(xmheap_ptr) \
-    ((x_rbtree_ptr)(xmheap_ptr)->xrbtree_recyc.xbt_ptr)
+/** xmem_block_t 链表前端节点 */
+#define XMHEAP_BLOCK_LIST_FRONT(xmheap_ptr) \
+            ((xmheap_ptr)->xlist_block.xlist_head.xlist_node.xblock_next)
 
-#define XMHEAP_RBTREE_TMOUT(xmheap_ptr) \
-    ((x_rbtree_ptr)(xmheap_ptr)->xrbtree_tmout.xbt_ptr)
+/** xmem_block_t 链表后端节点 */
+#define XMHEAP_BLOCK_LIST_BACK(xmheap_ptr)  \
+            ((xmheap_ptr)->xlist_block.xlist_tail.xlist_node.xblock_prev)
+
+/** xmem_block_t 链表尾部节点 */
+#define XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr)  \
+            ((xblock_handle_t)&(xmheap_ptr)->xlist_block.xlist_tail)
+
+/** xarray_cctxt_t 链表头部节点 */
+#define XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr)  \
+            ((xarray_ctxptr_t)&(xmheap_ptr)->xlist_array.xlist_head)
+
+/** xarray_cctxt_t 链表前端节点 */
+#define XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr) \
+            ((xmheap_ptr)->xlist_array.xlist_head.xlist_node.xarray_next)
+
+/** xarray_cctxt_t 链表后端节点 */
+#define XMHEAP_ARRAY_LIST_BACK(xmheap_ptr)  \
+            ((xmheap_ptr)->xlist_array.xlist_tail.xlist_node.xarray_prev)
+
+/** xarray_cctxt_t 链表尾部节点 */
+#define XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr)  \
+            ((xarray_ctxptr_t)&(xmheap_ptr)->xlist_array.xlist_tail)
+
+/** 存储 xchunk_context_t 的红黑树 */
+#define XMHEAP_RBTREE(xmheap_ptr) ((x_rbtree_ptr)(xmheap_ptr)->xrbtree.xbt_ptr)
 
 ////////////////////////////////////////////////////////////////////////////////
 // 函数前置声明
@@ -187,19 +264,19 @@ static x_void_t xmheap_chunk_context_recyc(xmheap_handle_t, xchunk_ctxptr_t);
 
 /**********************************************************/
 /**
- * @brief 从系统中申请堆内存块。
+ * @brief 从系统中申请堆内存区块。
  */
-static inline xmheap_chunk_t xsys_heap_alloc(x_size_t xst_size)
+static inline xblock_handle_t xsys_heap_alloc(x_size_t xst_size)
 {
 #ifdef _MSC_VER
-    return HeapAlloc(GetProcessHeap(), 0, xst_size);
+    return (xblock_handle_t)HeapAlloc(GetProcessHeap(), 0, xst_size);
 #elif defined(__GNUC__)
-    return mmap(X_NULL,
-                xst_size,
-                PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS,
-                -1,
-                0);
+    return (xblock_handle_t)mmap(X_NULL,
+                                 xst_size,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE | MAP_ANONYMOUS,
+                                 -1,
+                                 0);
 #else
     XASSERT(X_FALSE);
     return X_NULL;
@@ -208,15 +285,15 @@ static inline xmheap_chunk_t xsys_heap_alloc(x_size_t xst_size)
 
 /**********************************************************/
 /**
- * @brief 将堆内存块释放回系统中。
+ * @brief 将堆内存区块释放回系统中。
  */
 static inline x_void_t xsys_heap_free(
-    xmheap_chunk_t xmheap_chunk, x_size_t xst_size)
+    xblock_handle_t xblock_ptr, x_size_t xst_size)
 {
 #ifdef _MSC_VER
-    HeapFree(GetProcessHeap(), 0, xmheap_chunk);
+    HeapFree(GetProcessHeap(), 0, xblock_ptr);
 #elif defined(__GNUC__)
-    munmap(xmt_heap, xst_size);
+    munmap(xblock_ptr, xst_size);
 #else
     XASSERT(X_FALSE);
     return X_NULL;
@@ -251,6 +328,275 @@ static inline x_void_t * xmem_clear(x_void_t * xmem_ptr, x_uint32_t xut_size)
     return memset(xmem_ptr, 0, xut_size);
 }
 
+/**********************************************************/
+/**
+ * @brief 对内存位区置位（0 或 1）。
+ * @note 函数内部不对 xmem_bits 内存越界检测，使用时需要注意。
+ * 
+ * @param [in ] xmem_bits : 目标操作的内存位区。
+ * @param [in ] xut_bpos  : 起始位置（按 位 计数）。
+ * @param [in ] xut_nums  : 置位数量（按 位 计数）。
+ * @param [in ] xut_vbit  : 置位值（0 或 1）。
+ */
+static x_void_t xmem_bits_set(xmem_slice_t xmem_bits,
+                              x_uint32_t xut_bpos,
+                              x_uint32_t xut_nums,
+                              x_uint32_t xut_vbit)
+{
+    XASSERT(X_NULL != xmem_bits);
+
+    x_uint32_t xut_head = 0;
+    x_uint32_t xut_tail = 0;
+    x_uint32_t xut_midl = 0;
+
+    //======================================
+    // 未跨字节的情况。
+    // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
+    // 可按跨字节的情况处理
+
+    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    {
+        if (0 == xut_vbit)
+        {
+            xmem_bits[xut_bpos / 8] &=
+                ~((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos % 8)));
+        }
+        else
+        {
+            xmem_bits[xut_bpos / 8] |=
+                ((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos % 8)));
+        }
+
+        return;
+    }
+
+    //======================================
+    // 跨字节的情况
+
+    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_midl = xut_nums - xut_head - xut_tail;
+
+    XASSERT(0 == (xut_midl % 8));
+
+    if (0 == xut_vbit)
+    {
+        if (xut_head > 0)
+            xmem_bits[xut_bpos / 8] &= (x_byte_t)(0xFF >> xut_head);
+
+        if (xut_midl > 0)
+            memset(xmem_bits + ((xut_bpos + 7) / 8), 0x00, xut_midl / 8);
+
+        if (xut_tail > 0)
+            xmem_bits[(xut_bpos + xut_nums) / 8] &=
+                                (x_byte_t)(0xFF << xut_tail);
+    }
+    else
+    {
+        if (xut_head > 0)
+            xmem_bits[xut_bpos / 8] |= (x_byte_t)(0xFF << (8 - xut_head));
+
+        if (xut_midl > 0)
+            memset(xmem_bits + ((xut_bpos + 7) / 8), 0xFF, xut_midl / 8);
+
+        if (xut_tail > 0)
+            xmem_bits[(xut_bpos + xut_nums) / 8] |=
+                                (x_byte_t)(0xFF >> (8 - xut_tail));
+    }
+
+    //======================================
+}
+
+/**********************************************************/
+/**
+ * @brief 对内存位区进行 “0” 位检测。
+ * @note 函数内部不对 xmem_bits 内存越界检测，使用时需要注意。
+ * 
+ * @param [in ] xmem_bits : 目标操作的内存位区。
+ * @param [in ] xut_bpos  : 起始位置（按 位 计数）。
+ * @param [in ] xut_nums  : 检测位数量（按 位 计数）。
+ * 
+ * @return x_uint32_t
+ *         - 返回值表示最后进行 “0” 位检测的停止位置。
+ */
+static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
+                                    x_uint32_t xut_bpos,
+                                    x_uint32_t xut_nums)
+{
+    XASSERT(X_NULL != xmem_bits);
+    XASSERT(xut_nums > 0);
+
+    x_uint32_t xut_head = 0;
+    x_uint32_t xut_tail = 0;
+    x_uint32_t xut_midl = 0;
+
+    x_uint32_t xut_iter = xut_bpos;
+
+    //======================================
+    // 未跨字节的情况。
+    // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
+    // 可按跨字节的情况处理
+
+    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    {
+        while (xut_nums-- > 0)
+        {
+            if (XMEM_BITS_IS_1(xmem_bits, xut_iter))
+                break;
+            xut_iter += 1;
+        }
+
+        return xut_iter;
+    }
+
+    //======================================
+    // 跨字节的情况
+
+    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_midl = xut_nums - xut_head - xut_tail;
+
+    XASSERT(0 == (xut_midl % 8));
+    xut_midl /= 8;
+
+    while (xut_head-- > 0)
+    {
+        if (XMEM_BITS_IS_1(xmem_bits, xut_iter))
+            return xut_iter;
+        xut_iter += 1;
+    }
+
+    XASSERT(0 == (xut_iter % 8));
+
+    while (xut_midl-- > 0)
+    {
+        if (0x00 == xmem_bits[xut_iter / 8])
+        {
+            xut_iter += 8;
+        }
+        else
+        {
+            xut_bpos = 8;
+            while (xut_bpos-- > 0)
+            {
+                if (XMEM_BITS_IS_1(xmem_bits, xut_iter))
+                    break;
+                xut_iter += 1;
+            }
+
+            return xut_iter;
+        }
+    }
+
+    XASSERT(0 == (xut_iter % 8));
+
+    while (xut_tail-- > 0)
+    {
+        if (XMEM_BITS_IS_1(xmem_bits, xut_iter))
+            return xut_iter;
+        xut_iter += 1;
+    }
+
+    //======================================
+
+    return xut_iter;
+}
+
+/**********************************************************/
+/**
+ * @brief 对内存位区进行 “1” 位检测。
+ * @note 函数内部不对 xmem_bits 内存越界检测，使用时需要注意。
+ * 
+ * @param [in ] xmem_bits : 目标操作的内存位区。
+ * @param [in ] xut_bpos  : 起始位置（按 位 计数）。
+ * @param [in ] xut_nums  : 检测位数量（按 位 计数）。
+ * 
+ * @return x_uint32_t
+ *         - 返回值表示最后进行 “1” 位检测的停止位置。
+ */
+static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
+                                    x_uint32_t xut_bpos,
+                                    x_uint32_t xut_nums)
+{
+    XASSERT(X_NULL != xmem_bits);
+    XASSERT(xut_nums > 0);
+
+    x_uint32_t xut_head = 0;
+    x_uint32_t xut_tail = 0;
+    x_uint32_t xut_midl = 0;
+
+    x_uint32_t xut_iter = xut_bpos;
+
+    //======================================
+    // 未跨字节的情况。
+    // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
+    // 可按跨字节的情况处理
+
+    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    {
+        while (xut_nums-- > 0)
+        {
+            if (XMEM_BITS_IS_0(xmem_bits, xut_iter))
+                break;
+            xut_iter += 1;
+        }
+
+        return xut_iter;
+    }
+
+    //======================================
+    // 跨字节的情况
+
+    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_midl = xut_nums - xut_head - xut_tail;
+
+    XASSERT(0 == (xut_midl % 8));
+    xut_midl /= 8;
+
+    while (xut_head-- > 0)
+    {
+        if (XMEM_BITS_IS_0(xmem_bits, xut_iter))
+            return xut_iter;
+        xut_iter += 1;
+    }
+
+    XASSERT(0 == (xut_iter % 8));
+
+    while (xut_midl-- > 0)
+    {
+        if (0x00 == xmem_bits[xut_iter / 8])
+        {
+            xut_iter += 8;
+        }
+        else
+        {
+            xut_bpos = 8;
+            while (xut_bpos-- > 0)
+            {
+                if (XMEM_BITS_IS_0(xmem_bits, xut_iter))
+                    break;
+                xut_iter += 1;
+            }
+
+            return xut_iter;
+        }
+    }
+
+    XASSERT(0 == (xut_iter % 8));
+
+    while (xut_tail-- > 0)
+    {
+        if (XMEM_BITS_IS_0(xmem_bits, xut_iter))
+            return xut_iter;
+        xut_iter += 1;
+    }
+
+    //======================================
+
+    return xut_iter;
+}
+
 /////////////////////////////////////////////////////////////////////////////////
 
 //====================================================================
@@ -259,58 +605,31 @@ static inline x_void_t * xmem_clear(x_void_t * xmem_ptr, x_uint32_t xut_size)
 // 红黑树相关操作接口
 // 
 
-XRBTREE_CTYPE_API(xchunk_ctxptr_t, static, inline, cctxptr)
+XRBTREE_CTYPE_API(xchunk_ctxptr_t, static, inline, cctxt)
 
 #define XCCTXPTR_TCAST(xrbt_vkey) (*(xchunk_ctxptr_t *)(xrbt_vkey))
 #define XCCTXPTR_MSIZE(xrbt_vkey) (XCCTXPTR_TCAST(xrbt_vkey)->xchunk_size)
-#define XCCTXPTR_VTIME(xrbt_vkey) (XCCTXPTR_TCAST(xrbt_vkey)->xchunk_time)
-#define XCCTXPTR_LADDR(xrbt_vkey) ((xmheap_slice_t)XCCTXPTR_TCAST(xrbt_vkey)->xchunk_ptr)
+#define XCCTXPTR_LADDR(xrbt_vkey) ((xmem_slice_t)XCCTXPTR_TCAST(xrbt_vkey)->xchunk_ptr)
 #define XCCTXPTR_RADDR(xrbt_vkey) (XCCTXPTR_LADDR(xrbt_vkey) + XCCTXPTR_MSIZE(xrbt_vkey))
 
 /**********************************************************/
 /**
- * @brief 红黑树 xmem_heap_t.xrbtree_alloc 申请节点对象缓存的回调函数。
+ * @brief 红黑树 xmem_heap_t.xrbtree 申请节点对象缓存的回调函数。
  */
-static xrbt_void_t * xrbtree_alloc_node_memalloc(
+static xrbt_void_t * xrbtree_cctxt_node_alloc(
                             xrbt_vkey_t xrbt_vkey,
                             xrbt_size_t xst_nsize,
                             xrbt_ctxt_t xrbt_ctxt)
 {
     XASSERT(xst_nsize <= XMHEAP_RBNODE_SIZE);
-    return (xrbt_void_t *)(XCCTXPTR_TCAST(xrbt_vkey)->xrbnode_alloc.xbt_ptr);
-}
-
-/**********************************************************/
-/**
- * @brief 红黑树 xmem_heap_t.xrbtree_recyc 申请节点对象缓存的回调函数。
- */
-static xrbt_void_t * xrbtree_recyc_node_memalloc(
-                            xrbt_vkey_t xrbt_vkey,
-                            xrbt_size_t xst_nsize,
-                            xrbt_ctxt_t xrbt_ctxt)
-{
-    XASSERT(xst_nsize <= XMHEAP_RBNODE_SIZE);
-    return (xrbt_void_t *)(XCCTXPTR_TCAST(xrbt_vkey)->xrbnode_recyc.xbt_ptr);
-}
-
-/**********************************************************/
-/**
- * @brief 红黑树 xmem_heap_t.xrbtree_tmout 申请节点对象缓存的回调函数。
- */
-static xrbt_void_t * xrbtree_tmout_node_memalloc(
-                            xrbt_vkey_t xrbt_vkey,
-                            xrbt_size_t xst_nsize,
-                            xrbt_ctxt_t xrbt_ctxt)
-{
-    XASSERT(xst_nsize <= XMHEAP_RBNODE_SIZE);
-    return (xrbt_void_t *)(XCCTXPTR_TCAST(xrbt_vkey)->xrbnode_tmout.xbt_ptr);
+    return (xrbt_void_t *)(XCCTXPTR_TCAST(xrbt_vkey)->xtree_node.xbt_ptr);
 }
 
 /**********************************************************/
 /**
  * @brief 红黑树释放节点对象缓存的回调函数。
  */
-static xrbt_void_t xrbtree_cctxt_node_memfree(
+static xrbt_void_t xrbtree_cctxt_node_free(
                             x_rbnode_iter xiter_node,
                             xrbt_size_t xnode_size,
                             xrbt_ctxt_t xrbt_ctxt)
@@ -358,17 +677,14 @@ static xrbt_void_t xrbtree_cctxt_destruct(
                             xrbt_ctxt_t xrbt_ctxt)
 {
     XASSERT(sizeof(xchunk_ctxptr_t) == xrbt_size);
-    xsys_heap_free(XCCTXPTR_LADDR(xrbt_vkey), XCCTXPTR_MSIZE(xrbt_vkey));
 
-    XCCTXPTR_MSIZE(xrbt_vkey) = 0;
-    XCCTXPTR_LADDR(xrbt_vkey) = X_NULL;
 }
 
 /**********************************************************/
 /**
  * @brief 服务于 xmem_heap_t.xrbtree_alloc 节点索引键值比较的回调函数。
  */
-static xrbt_bool_t xrbtree_alloc_cctxt_compare(
+static xrbt_bool_t xrbtree_cctxt_compare(
                             xrbt_vkey_t xrbt_lkey,
                             xrbt_vkey_t xrbt_rkey,
                             xrbt_size_t xrbt_size,
@@ -376,40 +692,6 @@ static xrbt_bool_t xrbtree_alloc_cctxt_compare(
 {
     XASSERT(sizeof(xchunk_ctxptr_t) == xrbt_size);
     return (XCCTXPTR_RADDR(xrbt_lkey) <= XCCTXPTR_LADDR(xrbt_rkey));
-}
-
-/**********************************************************/
-/**
- * @brief 服务于 xmem_heap_t.xrbtree_recyc 节点索引键值比较的回调函数。
- */
-static xrbt_bool_t xrbtree_recyc_cctxt_compare(
-                            xrbt_vkey_t xrbt_lkey,
-                            xrbt_vkey_t xrbt_rkey,
-                            xrbt_size_t xrbt_size,
-                            xrbt_ctxt_t xrbt_ctxt)
-{
-    XASSERT(sizeof(xchunk_ctxptr_t) == xrbt_size);
-
-    if (XCCTXPTR_MSIZE(xrbt_lkey) == XCCTXPTR_MSIZE(xrbt_rkey))
-    {
-        return (XCCTXPTR_RADDR(xrbt_lkey) <= XCCTXPTR_LADDR(xrbt_rkey));
-    }
-
-    return (XCCTXPTR_MSIZE(xrbt_lkey) < XCCTXPTR_MSIZE(xrbt_rkey));
-}
-
-/**********************************************************/
-/**
- * @brief 服务于 xmem_heap_t.xrbtree_tmout 节点索引键值比较的回调函数。
- */
-static xrbt_bool_t xrbtree_tmout_cctxt_compare(
-                            xrbt_vkey_t xrbt_lkey,
-                            xrbt_vkey_t xrbt_rkey,
-                            xrbt_size_t xrbt_size,
-                            xrbt_ctxt_t xrbt_ctxt)
-{
-    XASSERT(sizeof(xchunk_ctxptr_t) == xrbt_size);
-    return (XCCTXPTR_VTIME(xrbt_lkey) < XCCTXPTR_VTIME(xrbt_rkey));
 }
 
 //====================================================================
@@ -420,31 +702,362 @@ static xrbt_bool_t xrbtree_tmout_cctxt_compare(
 
 /**********************************************************/
 /**
+ * @brief 申请堆内存区块对象。
+ * 
+ * @param [in ] xmheap_ptr  : 堆管理对象。
+ * @param [in ] xblock_size : 堆内存区块大小。
+ * 
+ * @return xblock_handle_t
+ *         - 成功，返回 堆内存区块对象句柄；
+ *         - 失败，返回 X_NULL。
+ */
+static xblock_handle_t xmheap_block_alloc(
+                            xmheap_handle_t xmheap_ptr,
+                            x_uint32_t xblock_size)
+{
+    XASSERT(xblock_size >= (sizeof(xmem_block_t) + XMHEAP_PAGE_SIZE));
+    XASSERT(xblock_size == X_ALIGN(xblock_size, XMHEAP_PAGE_SIZE));
+
+    x_uint32_t xmpage_nums =
+                    ((8 * (xblock_size - sizeof(xmem_block_t))) /
+                     (1 + 8 * XMHEAP_PAGE_SIZE));
+
+    xblock_handle_t xblock_ptr = (xblock_handle_t)xsys_heap_alloc(xblock_size);
+    if (X_NULL == xblock_ptr)
+    {
+        return X_NULL;
+    }
+
+    xblock_ptr->xlist_node.xblock_prev = X_NULL;
+    xblock_ptr->xlist_node.xblock_next = X_NULL;
+
+    xblock_ptr->xblock_size   = xblock_size;
+    xblock_ptr->xmpage_size   = XMHEAP_PAGE_SIZE;
+    xblock_ptr->xmpage_nums   = xmpage_nums;
+    xblock_ptr->xmpage_rems   = xmpage_nums;
+    xblock_ptr->xmpage_offset = xblock_size - (xmpage_nums * XMHEAP_PAGE_SIZE);
+    xblock_ptr->xmpage_cursor = 0;
+
+    xmem_clear(xblock_ptr->xmpage_bit, ((xmpage_nums + 7) / 8));
+
+    return xblock_ptr;
+}
+
+/**********************************************************/
+/**
+ * @brief 释放堆内存区块对象。
+ */
+static x_void_t xmheap_block_free(
+                            xmheap_handle_t xmheap_ptr,
+                            xblock_handle_t xblock_ptr)
+{
+    XASSERT(xblock_ptr->xmpage_nums == xblock_ptr->xmpage_rems);
+    xsys_heap_free(xblock_ptr, xblock_ptr->xblock_size);
+}
+
+/**********************************************************/
+/**
+ * @brief 从堆内存区块中申请内存块。
+ */
+static xmheap_chunk_t xmheap_block_alloc_chunk(
+                            xblock_handle_t xblock_ptr,
+                            x_uint32_t xchunk_size)
+{
+    XASSERT(xchunk_size == X_ALIGN(xchunk_size, xblock_ptr->xmpage_size));
+
+    x_uint32_t xmpage_bpos = 0;
+    x_uint32_t xmpage_epos = 0;
+    x_uint32_t xmpage_cpos = 0;
+    x_uint32_t xmpage_nums = xchunk_size / xblock_ptr->xmpage_size;
+
+    if (xmpage_nums > xblock_ptr->xmpage_rems)
+    {
+        return X_NULL;
+    }
+
+    //======================================
+    // 游标后进行遍历查找可用的内存块
+
+    xmpage_bpos = xblock_ptr->xmpage_cursor;
+    while ((xmpage_bpos + xmpage_nums) < xblock_ptr->xmpage_nums)
+    {
+        xmpage_epos = xmem_bits_check_0(xblock_ptr->xmpage_bit,
+                                        xmpage_bpos,
+                                        xmpage_nums);
+        if (xmpage_epos >= (xmpage_bpos + xmpage_nums))
+        {
+            // 将内存块对应的区位置 1 ，标识已被分配
+            xmem_bits_set(xblock_ptr->xmpage_bit, xmpage_bpos, xmpage_nums, 1);
+
+            // 更新剩余分页数量
+            xblock_ptr->xmpage_rems -= xmpage_nums;
+
+            // 更新 游标 到 内存块末端 对应的索引位置
+            xblock_ptr->xmpage_cursor = xmpage_bpos + xmpage_nums;
+
+            // 返回内存块地址
+            return XBLOCK_PAGE_ADDR(xblock_ptr, xmpage_bpos);
+        }
+
+        if (xmpage_bpos == xblock_ptr->xmpage_cursor)
+        {
+            // 记录游标后首个 “1” 的位置，
+            // 作为“游标前遍历查找可用内存块”的末端位置
+            xmpage_cpos = xmpage_epos;
+        }
+
+        xmpage_bpos = xmem_bits_check_1(xblock_ptr->xmpage_bit,
+                                        xmpage_epos,
+                                        xblock_ptr->xmpage_nums - xmpage_epos);
+    }
+
+    //======================================
+    // 游标前遍历查找可用的内存块
+
+    xmpage_bpos = 0;
+    while ((xmpage_bpos + xmpage_nums) < xmpage_cpos)
+    {
+        xmpage_epos = xmem_bits_check_0(xblock_ptr->xmpage_bit,
+                                        xmpage_bpos,
+                                        xmpage_nums);
+        if (xmpage_epos >= (xmpage_bpos + xmpage_nums))
+        {
+            // 将内存块对应的区位置 1 ，标识已被分配
+            xmem_bits_set(xblock_ptr->xmpage_bit, xmpage_bpos, xmpage_nums, 1);
+
+            // 更新剩余分页数量
+            xblock_ptr->xmpage_rems -= xmpage_nums;
+
+            // 更新 游标 到 内存块末端 对应的索引位置
+            xblock_ptr->xmpage_cursor = xmpage_bpos + xmpage_nums;
+
+            // 返回内存块地址
+            return XBLOCK_PAGE_ADDR(xblock_ptr, xmpage_bpos);
+        }
+
+        xmpage_bpos = xmem_bits_check_1(xblock_ptr->xmpage_bit,
+                                        xmpage_epos,
+                                        xmpage_cpos - xmpage_epos);
+    }
+
+    //======================================
+
+    return X_NULL;
+}
+
+/**********************************************************/
+/**
+ * @brief 将 内存块 回收到 堆内存区块 中。
+ */
+static x_int32_t xmheap_block_recyc_chunk(
+                            xblock_handle_t xblock_ptr,
+                            xmheap_chunk_t xchunk_ptr,
+                            x_uint32_t xchunk_size)
+{
+    XASSERT((((xmem_slice_t)xchunk_ptr) >= XBLOCK_PAGE_BEGIN(xblock_ptr)) &&
+            (((xmem_slice_t)xchunk_ptr) <  XBLOCK_PAGE_END(xblock_ptr)));
+    XASSERT(xchunk_size == X_ALIGN(xchunk_size, xblock_ptr->xmpage_size));
+
+    //======================================
+    // 回收内存块
+
+    x_uint32_t xmpage_nums = xchunk_size / xblock_ptr->xmpage_size;
+    x_uint32_t xmpage_bpos = (x_uint32_t)((xmem_slice_t)xchunk_ptr -
+                                          XBLOCK_PAGE_BEGIN(xblock_ptr));
+
+    if (0 != (xmpage_bpos % xblock_ptr->xmpage_size))
+    {
+        return XMEM_ERR_SLICE_UNALIGNED;
+    }
+
+    xmpage_bpos /= xblock_ptr->xmpage_size;
+
+    XASSERT(xmem_bits_check_1(
+                xblock_ptr->xmpage_bit, xmpage_bpos, xmpage_nums) >=
+            (xmpage_bpos + xmpage_nums));
+    xmem_bits_set(xblock_ptr->xmpage_bit, xmpage_bpos, xmpage_nums, 0);
+
+    //======================================
+    // 更新 block 信息
+
+    xblock_ptr->xmpage_rems  += xmpage_nums;
+    xblock_ptr->xmpage_cursor = xmpage_bpos;
+
+    //======================================
+
+    return XMEM_ERR_OK;
+}
+
+/**********************************************************/
+/**
+ * @brief 将堆内存区块对象从链表中移出。
+ */
+static x_void_t xmheap_block_list_erase(
+                            xmheap_handle_t xmheap_ptr,
+                            xblock_handle_t xblock_ptr)
+{
+    xblock_ptr->xlist_node.xblock_prev->xlist_node.xblock_next =
+        xblock_ptr->xlist_node.xblock_next;
+    xblock_ptr->xlist_node.xblock_next->xlist_node.xblock_prev =
+        xblock_ptr->xlist_node.xblock_prev;
+}
+
+/**********************************************************/
+/**
+ * @brief 将堆内存区块对象压入链表头部。
+ */
+static x_void_t xmheap_block_list_push_head(
+                            xmheap_handle_t xmheap_ptr,
+                            xblock_handle_t xblock_ptr)
+{
+    if (XMHEAP_BLOCK_LIST_FRONT(xmheap_ptr) == xblock_ptr)
+    {
+        return;
+    }
+
+    xblock_ptr->xlist_node.xblock_prev = XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr);
+    xblock_ptr->xlist_node.xblock_next = XMHEAP_BLOCK_LIST_FRONT(xmheap_ptr);
+
+    XMHEAP_BLOCK_LIST_FRONT(xmheap_ptr)->xlist_node.xblock_prev = xblock_ptr;
+    XMHEAP_BLOCK_LIST_HEAD(xmheap_ptr)->xlist_node.xblock_next  = xblock_ptr;
+}
+
+/**********************************************************/
+/**
+ * @brief 将堆内存区块对象压入链表尾部。
+ */
+static x_void_t xmheap_block_list_push_tail(
+                            xmheap_handle_t xmheap_ptr,
+                            xblock_handle_t xblock_ptr)
+{
+    if (XMHEAP_BLOCK_LIST_BACK(xmheap_ptr) == xblock_ptr)
+    {
+        return;
+    }
+
+    xblock_ptr->xlist_node.xblock_next = XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr);
+    xblock_ptr->xlist_node.xblock_prev = XMHEAP_BLOCK_LIST_BACK(xmheap_ptr);
+
+    XMHEAP_BLOCK_LIST_BACK(xmheap_ptr)->xlist_node.xblock_next = xblock_ptr;
+    XMHEAP_BLOCK_LIST_TAIL(xmheap_ptr)->xlist_node.xblock_prev = xblock_ptr;
+}
+
+//====================================================================
+
+/**********************************************************/
+/**
+ * @brief 将 xarray_cctxt_t 对象从链表中移出。
+ */
+static x_void_t xmheap_array_list_erase(
+                            xmheap_handle_t xmheap_ptr,
+                            xarray_ctxptr_t xarray_ptr)
+{
+    xarray_ptr->xlist_node.xarray_prev->xlist_node.xarray_next =
+        xarray_ptr->xlist_node.xarray_next;
+    xarray_ptr->xlist_node.xarray_next->xlist_node.xarray_prev =
+        xarray_ptr->xlist_node.xarray_prev;
+}
+
+/**********************************************************/
+/**
+ * @brief 将 xarray_cctxt_t 对象压入链表头部。
+ */
+static x_void_t xmheap_array_list_push_head(
+                            xmheap_handle_t xmheap_ptr,
+                            xarray_ctxptr_t xarray_ptr)
+{
+    if (XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr) == xarray_ptr)
+    {
+        return;
+    }
+
+    xarray_ptr->xlist_node.xarray_prev = XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr);
+    xarray_ptr->xlist_node.xarray_next = XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr);
+
+    XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr)->xlist_node.xarray_prev = xarray_ptr;
+    XMHEAP_ARRAY_LIST_HEAD(xmheap_ptr)->xlist_node.xarray_next  = xarray_ptr;
+}
+
+/**********************************************************/
+/**
+ * @brief 将 xarray_cctxt_t 对象压入链表尾部。
+ */
+static x_void_t xmheap_array_list_push_tail(
+                            xmheap_handle_t xmheap_ptr,
+                            xarray_ctxptr_t xarray_ptr)
+{
+    if (XMHEAP_ARRAY_LIST_BACK(xmheap_ptr) == xarray_ptr)
+    {
+        return;
+    }
+
+    xarray_ptr->xlist_node.xarray_next = XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr);
+    xarray_ptr->xlist_node.xarray_prev = XMHEAP_ARRAY_LIST_BACK(xmheap_ptr);
+
+    XMHEAP_ARRAY_LIST_BACK(xmheap_ptr)->xlist_node.xarray_next = xarray_ptr;
+    XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr)->xlist_node.xarray_prev = xarray_ptr;
+}
+
+/**********************************************************/
+/**
+ * @brief 获取首个非空的 xarray_ctxptr_t 对象。
+ */
+static xarray_ctxptr_t xmheap_array_get_non_empty(xmheap_handle_t xmheap_ptr)
+{
+    xarray_ctxptr_t xarray_ptr = X_NULL;
+
+    for (xarray_ptr  = XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr);
+         xarray_ptr != XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr);
+         xarray_ptr  = xarray_ptr->xlist_node.xarray_next)
+    {
+        if (!XSLICE_QUEUE_IS_EMPTY(xarray_ptr))
+        {
+            if (xarray_ptr != XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr))
+            {
+                xmheap_array_list_erase(xmheap_ptr, xarray_ptr);
+                xmheap_array_list_push_head(xmheap_ptr, xarray_ptr);
+            }
+
+            return xarray_ptr;
+        }
+    }
+
+    return X_NULL;
+}
+
+//====================================================================
+
+/**********************************************************/
+/**
  * @brief 申请 xchunk_context_t 对象。
  * 
- * @param [in ] xmheap_ptr   : 堆内存管理对象。
- * @param [in ] xut_size     : 对应的内存块大小。
- * @param [in ] xchunk_ptr   : 指向对应的内存块地址。
- * @param [in ] xchunk_owner : 持有该内存块的标识句柄。
+ * @param [in ] xmheap_ptr : 堆内存管理对象。
+ * @param [in ] xut_size   : 对应的内存块大小。
+ * @param [in ] xchunk_ptr : 指向对应的内存块地址。
+ * @param [in ] xowner_ptr : 持有该内存块的标识句柄。
  */
-static xchunk_ctxptr_t xmheap_chunk_context_alloc(
+static xchunk_ctxptr_t xmheap_cctxt_alloc(
                                 xmheap_handle_t xmheap_ptr,
                                 x_uint32_t xut_size,
                                 x_handle_t xchunk_ptr,
-                                x_handle_t xchunk_owner)
+                                x_handle_t xowner_ptr)
 {
-    xchunk_ctxptr_t xcctxt_ptr =
-        (xchunk_ctxptr_t)xmem_alloc(sizeof(xchunk_context_t));
-    XASSERT(X_NULL != xcctxt_ptr);
+    xchunk_ctxptr_t xcctxt_ptr = X_NULL;
+    xarray_ctxptr_t xarray_ptr = X_NULL;
+
+    //======================================
+
+
+
+    //======================================
 
     xmem_clear(xcctxt_ptr, sizeof(xchunk_context_t));
 
-    xcctxt_ptr->xchunk_size   = xut_size;
-    xcctxt_ptr->xchunk_status = 0;
-    xcctxt_ptr->xchunk_time   = 0;
-    xcctxt_ptr->xchunk_ptr    = xchunk_ptr;
-    xcctxt_ptr->xchunk_owner  = xchunk_owner;
-    xcctxt_ptr->xarray_ptr    = X_NULL;
+    xcctxt_ptr->xchunk_size = xut_size;
+    xcctxt_ptr->xchunk_ptr  = xchunk_ptr;
+    xcctxt_ptr->xowner_ptr  = xowner_ptr;
+    xcctxt_ptr->xblock_ptr  = X_NULL;
+    xcctxt_ptr->xarray_ptr  = X_NULL;
 
     return xcctxt_ptr;
 }
@@ -453,12 +1066,124 @@ static xchunk_ctxptr_t xmheap_chunk_context_alloc(
 /**
  * @brief 回收 xchunk_context_t 对象。
  */
-static x_void_t xmheap_chunk_context_recyc(
+static x_void_t xmheap_cctxt_recyc(
                                 xmheap_handle_t xmheap_ptr,
                                 xchunk_ctxptr_t xcctxt_ptr)
 {
     XASSERT(X_NULL != xcctxt_ptr);
-    xmem_free(xcctxt_ptr);
+}
+
+/**********************************************************/
+/**
+ * @brief 从 xarray_cctxt_t 对象中申请 xchunk_context_t 缓存。
+ * 
+ * @param [in ] xarray_ptr : xarray_cctxt_t 对象。
+ * 
+ * @return xchunk_ctxptr_t
+ *         - 成功，返回 xchunk_ctxptr_t 节点缓存；
+ *         - 失败，返回 X_NULL，xarray_cctxt_t 对象的分片队列已经为空。
+ */
+static xchunk_ctxptr_t xmheap_array_alloc_cctxt(xarray_ctxptr_t xarray_ptr)
+{
+    x_uint16_t xut_index = 0;
+
+    if (XSLICE_QUEUE_EMPTY(xarray_ptr))
+    {
+        return X_NULL;
+    }
+
+    xut_index = XSLICE_QUEUE_INDEX_GET(
+                    xarray_ptr, xarray_ptr->xslice_queue.xut_bpos, x_uint32_t);
+
+    XASSERT(xut_index < XSLICE_QUEUE_CAPACITY(xarray_ptr));
+    XASSERT(!XSLICE_QUEUE_IS_ALLOCATED(xarray_ptr, xut_index, x_uint32_t));
+
+    // 设置分片“已被分配出去”的标识位
+    XSLICE_QUEUE_ALLOCATED_SET(xarray_ptr, xut_index, x_uint32_t);
+
+    xarray_ptr->xslice_queue.xut_bpos += 1;
+    XASSERT(0 != xarray_ptr->xslice_queue.xut_bpos);
+
+    return (xchunk_ctxptr_t)(XSLICE_QUEUE_GET(xarray_ptr, xut_index));
+}
+
+/**********************************************************/
+/**
+ * @brief 回收 xchunk_context_t 缓存分片至 xarray_cctxt_t 对象中。
+ * 
+ * @param [in ] xarray_ptr : chunk 对象。
+ * @param [in ] xcctxt_ptr : 待回收的内存分片。
+ * 
+ * @return x_int32_t
+ *         - 成功，返回 XMEM_ERR_OK；
+ *         - 失败，返回 错误码。
+ */
+static x_int32_t xmheap_array_recyc_cctxt(
+                    xarray_ctxptr_t xarray_ptr,
+                    xchunk_ctxptr_t xcctxt_ptr)
+{
+    XASSERT((xcctxt_ptr > XARRAY_LADDR(xarray_ptr)) &&
+            (xcctxt_ptr < XARRAY_RADDR(xarray_ptr)));
+    XASSERT(XSLICE_QUEUE_CAPACITY(xarray_ptr) > 0);
+    XASSERT(!XSLICE_QUEUE_IS_FULL(xarray_ptr, x_uint32_t));
+
+    x_int32_t  xit_error  = XMEM_ERR_UNKNOW;
+    x_uint32_t xut_offset = 0;
+    x_uint32_t xut_index  = 0;
+
+    do
+    {
+        //======================================
+
+        xut_offset = (x_uint32_t)((xmem_slice_t)xcctxt_ptr -
+                                  XARRAY_LADDR(xarray_ptr));
+        if (xut_offset < xarray_ptr->xslice_queue.xut_offset)
+        {
+            xit_error = XMEM_ERR_SLICE_UNALIGNED;
+            break;
+        }
+
+        xut_offset -= xarray_ptr->xslice_queue.xut_offset;
+        if (0 != (xut_offset % xarray_ptr->xslice_size))
+        {
+            xit_error = XMEM_ERR_SLICE_UNALIGNED;
+            break;
+        }
+
+        //======================================
+
+        xut_index = xut_offset / xarray_ptr->xslice_size;
+        XASSERT(xut_index < XSLICE_QUEUE_CAPACITY(xarray_ptr));
+
+        // 判断分片是否已经被回收
+        if (!XSLICE_QUEUE_IS_ALLOCATED(xarray_ptr, xut_index, x_uint32_t))
+        {
+            xit_error = XMEM_ERR_SLICE_RECYCLED;
+            break;
+        }
+
+        XASSERT(!xchunk_find_qindex(xarray_ptr, (x_uint16_t)xut_index));
+        XSLICE_QUEUE_INDEX_SET(
+            xarray_ptr, xarray_ptr->xslice_queue.xut_epos, xut_index, x_uint32_t);
+
+        // 标识分片“未被分配出去”
+        XSLICE_QUEUE_ALLOCATED_RESET(xarray_ptr, xut_index, x_uint32_t);
+
+        xarray_ptr->xslice_queue.xut_epos += 1;
+
+        if (0 == xarray_ptr->xslice_queue.xut_epos)
+        {
+            xarray_ptr->xslice_queue.xut_epos  = XSLICE_QUEUE_COUNT(xarray_ptr, x_uint32_t);
+            xarray_ptr->xslice_queue.xut_bpos %= xarray_ptr->xslice_queue.xut_capacity;
+            xarray_ptr->xslice_queue.xut_epos += xarray_ptr->xslice_queue.xut_bpos;
+        }
+
+        //======================================
+
+        xit_error = XMEM_ERR_OK;
+    } while (0);
+
+    return xit_error;
 }
 
 //====================================================================
@@ -475,33 +1200,13 @@ xmheap_handle_t xmheap_create(void)
 {
     //======================================
 
-    xrbt_callback_t xcallback_alloc =
+    xrbt_callback_t xcallback =
     {
-        /* .xfunc_n_memalloc = */ &xrbtree_alloc_node_memalloc,
-        /* .xfunc_n_memfree  = */ &xrbtree_cctxt_node_memfree ,
-        /* .xfunc_k_copyfrom = */ &xrbtree_cctxt_copyfrom     ,
-        /* .xfunc_k_destruct = */ &xrbtree_cctxt_destruct     ,
-        /* .xfunc_k_lesscomp = */ &xrbtree_alloc_cctxt_compare,
-        /* .xctxt_t_callback = */ XRBT_NULL
-    };
-
-    xrbt_callback_t xcallback_recyc =
-    {
-        /* .xfunc_n_memalloc = */ &xrbtree_recyc_node_memalloc,
-        /* .xfunc_n_memfree  = */ &xrbtree_cctxt_node_memfree ,
-        /* .xfunc_k_copyfrom = */ &xrbtree_cctxt_copyfrom     ,
-        /* .xfunc_k_destruct = */ &xrbtree_cctxt_destruct     ,
-        /* .xfunc_k_lesscomp = */ &xrbtree_recyc_cctxt_compare,
-        /* .xctxt_t_callback = */ XRBT_NULL
-    };
-
-    xrbt_callback_t xcallback_tmout =
-    {
-        /* .xfunc_n_memalloc = */ &xrbtree_tmout_node_memalloc,
-        /* .xfunc_n_memfree  = */ &xrbtree_cctxt_node_memfree ,
-        /* .xfunc_k_copyfrom = */ &xrbtree_cctxt_copyfrom     ,
-        /* .xfunc_k_destruct = */ &xrbtree_cctxt_destruct     ,
-        /* .xfunc_k_lesscomp = */ &xrbtree_tmout_cctxt_compare,
+        /* .xfunc_n_memalloc = */ &xrbtree_cctxt_node_alloc,
+        /* .xfunc_n_memfree  = */ &xrbtree_cctxt_node_free ,
+        /* .xfunc_k_copyfrom = */ &xrbtree_cctxt_copyfrom  ,
+        /* .xfunc_k_destruct = */ &xrbtree_cctxt_destruct  ,
+        /* .xfunc_k_lesscomp = */ &xrbtree_cctxt_compare   ,
         /* .xctxt_t_callback = */ XRBT_NULL
     };
 
@@ -514,17 +1219,9 @@ xmheap_handle_t xmheap_create(void)
 
     //======================================
 
-    xrbtree_emplace_create(XMHEAP_RBTREE_ALLOC(xmheap_ptr),
+    xrbtree_emplace_create(XMHEAP_RBTREE(xmheap_ptr),
                            sizeof(xchunk_ctxptr_t),
-                           &xcallback_alloc);
-
-    xrbtree_emplace_create(XMHEAP_RBTREE_RECYC(xmheap_ptr),
-                           sizeof(xchunk_ctxptr_t),
-                           &xcallback_alloc);
-
-    xrbtree_emplace_create(XMHEAP_RBTREE_TMOUT(xmheap_ptr),
-                           sizeof(xchunk_ctxptr_t),
-                           &xcallback_alloc);
+                           &xcallback);
 
     //======================================
 
@@ -541,9 +1238,7 @@ x_void_t xmheap_destroy(xmheap_handle_t xmheap_ptr)
 
     //======================================
 
-    xrbtree_emplace_destroy(XMHEAP_RBTREE_ALLOC(xmheap_ptr));
-    xrbtree_emplace_destroy(XMHEAP_RBTREE_RECYC(xmheap_ptr));
-    xrbtree_emplace_destroy(XMHEAP_RBTREE_TMOUT(xmheap_ptr));
+    xrbtree_emplace_destroy(XMHEAP_RBTREE(xmheap_ptr));
 
     //======================================
 
@@ -552,36 +1247,36 @@ x_void_t xmheap_destroy(xmheap_handle_t xmheap_ptr)
 
 /**********************************************************/
 /**
- * @brief 申请堆内存块。
+ * @brief 申请内存块。
  * 
- * @param [in ] xmheap_ptr   : 堆内存管理 对象的操作句柄。
- * @param [in ] xchunk_size  : 请求的堆内存块大小。
- * @param [in ] xchunk_owner : 持有该（返回的）堆内存块的标识句柄。
+ * @param [in ] xmheap_ptr  : 堆内存管理 对象的操作句柄。
+ * @param [in ] xchunk_size : 请求的内存块大小。
+ * @param [in ] xowner_ptr  : 持有该（返回的）内存块的标识句柄。
  * 
  * @return xmheap_chunk_t
- *         - 成功，返回 堆内存块；
+ *         - 成功，返回 内存块；
  *         - 失败，返回 X_NULL。
  */
 xmheap_chunk_t xmheap_alloc(xmheap_handle_t xmheap_ptr,
                             x_uint32_t xchunk_size,
-                            x_handle_t xchunk_owner)
+                            x_handle_t xowner_ptr)
 {
     return X_NULL;
 }
 
 /**********************************************************/
 /**
- * @brief 回收堆内存块。
+ * @brief 回收内存块。
  * 
- * @param [in ] xmheap_ptr   : 堆内存管理 对象的操作句柄。
- * @param [in ] xchunk_ptr   : 待释放的堆内存块。
- * @param [in ] xchunk_size  : 待释放的堆内存块大小。
- * @param [in ] xchunk_owner : 持有该堆内存块的标识句柄。
+ * @param [in ] xmheap_ptr  : 堆内存管理 对象的操作句柄。
+ * @param [in ] xchunk_ptr  : 待释放的内存块。
+ * @param [in ] xchunk_size : 待释放的内存块大小。
+ * @param [in ] xowner_ptr  : 持有该内存块的标识句柄。
  */
 x_void_t xmheap_recyc(xmheap_handle_t xmheap_ptr,
                       xmheap_chunk_t xchunk_ptr,
                       x_uint32_t xchunk_size,
-                      x_handle_t xchunk_owner)
+                      x_handle_t xowner_ptr)
 {
 
 }
