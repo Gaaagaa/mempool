@@ -565,7 +565,7 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
 
     while (xut_midl-- > 0)
     {
-        if (0x00 == xmem_bits[xut_iter / 8])
+        if (0xFF == xmem_bits[xut_iter / 8])
         {
             xut_iter += 8;
         }
