@@ -21,7 +21,6 @@
  */
 
 #include "xmem_comm.h"
-#include "xmem_pool.h"
 #include "xrbtree.h"
 
 #include <stdlib.h>
@@ -322,19 +321,8 @@ typedef struct xmem_chunk_t
 
     /**
      * @brief 内存分片索引号队列。
-     * @note
-     * 此为一个环形队列，xut_index[] 数组中的值，
-     * 第 0~14 位 表示分片索引号，
-     * 第  15  位 表示分片是否已经分配出去。
      */
-    struct
-    {
-    x_uint16_t      xut_offset;    ///< 内存分片组的首地址偏移量
-    x_uint16_t      xut_capacity;  ///< 队列的分片索引数组容量
-    x_uint16_t      xut_bpos;      ///< 队列的分片索引数组起始位置
-    x_uint16_t      xut_epos;      ///< 队列的分片索引数组结束位置
-    x_uint16_t      xut_index[0];  ///< 队列的分片索引数组
-    } xslice_queue;
+    XSLICE_QUEUE_DEFINED(x_uint16_t);
 } xmem_chunk_t;
 
 /** chunk 对象的左（起始）地址（xmem_slice_t 类型指针） */
@@ -343,62 +331,6 @@ typedef struct xmem_chunk_t
 /** chunk 对象的右（结束）地址（xmem_slice_t 类型指针） */
 #define XCHUNK_RADDR(xchunk_ptr) \
     (XCHUNK_LADDR(xchunk_ptr) + (xchunk_ptr)->xchunk_size)
-
-/** chunk 对象分片队列大小（容量） */
-#define XCHUNK_SLICE_QSIZE(xchunk_ptr) \
-    ((xchunk_ptr)->xslice_queue.xut_capacity)
-
-/** chunk 对象中未被分配出去的分片数量 */
-#define XCHUNK_SLICE_COUNT(xchunk_ptr)                                    \
-    ((x_uint16_t)(((x_uint16_t)(xchunk_ptr)->xslice_queue.xut_epos) +     \
-                 ~((x_uint16_t)(xchunk_ptr)->xslice_queue.xut_bpos) + 1)) \
-
-/** chunk 对象的分片队列是否已空，即所有分片都已经被分配出去 */
-#define XCHUNK_SLICE_EMPTY(xchunk_ptr) \
-    ((xchunk_ptr)->xslice_queue.xut_epos == (xchunk_ptr)->xslice_queue.xut_bpos)
-
-/** chunk 对象的分片队列是否已满，即没有任何一个分片被分配出去 */
-#define XCHUNK_SLICE_QFULL(xchunk_ptr) \
-    (XCHUNK_SLICE_COUNT(xchunk_ptr) == XCHUNK_SLICE_QSIZE(xchunk_ptr))
-
-/** chunk 对象中的分片索引号位置 */
-#define XCHUNK_SLICE_INDEX(xchunk_ptr, xut_pos) \
-    ((xchunk_ptr)->xslice_queue.xut_index[      \
-        (xut_pos) % (xchunk_ptr)->xslice_queue.xut_capacity])
-
-/** 获取 chunk 对象中的分片索引号值 */
-#define XCHUNK_SLICE_INDEX_GET(xchunk_ptr, xut_pos) \
-    (XCHUNK_SLICE_INDEX(xchunk_ptr, xut_pos) & 0x7FFF)
-
-/** 设置 chunk 对象中的分片索引号值 */
-#define XCHUNK_SLICE_INDEX_SET(xchunk_ptr, xut_pos, xut_index)  \
-    (XCHUNK_SLICE_INDEX(xchunk_ptr, xut_pos) =                  \
-        ((XCHUNK_SLICE_INDEX(xchunk_ptr, xut_pos) & 0x8000) |   \
-         (((x_uint16_t)(xut_index)) & 0x7FFF)))
-
-/** 判断 chunk 对象中的分片是否已被分配出去 */
-#define XCHUNK_SLICE_ALLOCATED(xchunk_ptr, xut_index) \
-    (0x8000 == (XCHUNK_SLICE_INDEX(xchunk_ptr, xut_index) & 0x8000))
-
-/** 标识 chunk 对象中的分片已经被分配出去 */
-#define XCHUNK_SLICE_ALLOCATED_SET(xchunk_ptr, xut_index)   \
-    (XCHUNK_SLICE_INDEX(xchunk_ptr, xut_index) |= 0x8000)
-
-/** 标识 chunk 对象中的分片未被分配出去 */
-#define XCHUNK_SLICE_ALLOCATED_RESET(xchunk_ptr, xut_index) \
-    (XCHUNK_SLICE_INDEX(xchunk_ptr, xut_index) &= 0x7FFF)
-
-/** chunk 对象的分片起始地址 */
-#define XCHUNK_SLICE_BEGIN(xchunk_ptr) \
-    ((xmem_slice_t)(xchunk_ptr) + (xchunk_ptr)->xslice_queue.xut_offset)
-
-/** 获取 chunk 对象的分片地址 */
-#define XCHUNK_SLICE_GET(xchunk_ptr, xut_index)  \
-    (XCHUNK_SLICE_BEGIN(xchunk_ptr) +            \
-     ((x_uint16_t)(xut_index)) * (xchunk_ptr)->xslice_size)
-
-/** chunk 对象的分片结束地址 */
-#define XCHUNK_SLICE_END(xchunk_ptr) XCHUNK_RADDR(xchunk_ptr)
 
 /**
  * @struct xmem_class_t
@@ -657,14 +589,15 @@ static inline x_bool_t xmpool_dealloc_chunk(xmpool_handle_t , xchunk_handle_t);
 /**
  * @brief 查找分片索引号是否还在 chunk 的分片队列中。
  */
-static x_bool_t xchunk_find_qindex(
+static x_bool_t xchunk_find_index(
                     xchunk_handle_t xchunk_ptr,
-                    x_uint16_t xut_qindex)
+                    x_uint16_t xut_index)
 {
     x_uint16_t xut_iter = xchunk_ptr->xslice_queue.xut_bpos;
     while (xut_iter != xchunk_ptr->xslice_queue.xut_epos)
     {
-        if (xut_qindex == XCHUNK_SLICE_INDEX_GET(xchunk_ptr, xut_iter))
+        if (xut_index ==
+            XSLICE_QUEUE_INDEX_GET(xchunk_ptr, xut_iter, x_uint16_t))
         {
             return X_TRUE;
         }
@@ -689,26 +622,26 @@ static xmem_slice_t xchunk_alloc_slice(xchunk_handle_t xchunk_ptr)
 {
     x_uint16_t xut_index = 0;
 
-    if (XCHUNK_SLICE_EMPTY(xchunk_ptr))
+    if (XSLICE_QUEUE_IS_EMPTY(xchunk_ptr))
     {
         return X_NULL;
     }
 
-    xut_index = XCHUNK_SLICE_INDEX_GET(
-                    xchunk_ptr, xchunk_ptr->xslice_queue.xut_bpos);
+    xut_index = XSLICE_QUEUE_INDEX_GET(
+                    xchunk_ptr, xchunk_ptr->xslice_queue.xut_bpos, x_uint16_t);
 
-    XASSERT(xut_index < XCHUNK_SLICE_QSIZE(xchunk_ptr));
-    XASSERT(!XCHUNK_SLICE_ALLOCATED(xchunk_ptr, xut_index));
+    XASSERT(xut_index < XSLICE_QUEUE_CAPACITY(xchunk_ptr));
+    XASSERT(!XSLICE_QUEUE_IS_ALLOCATED(xchunk_ptr, xut_index, x_uint16_t));
 
     // 设置分片“已被分配出去”的标识位
-    XCHUNK_SLICE_ALLOCATED_SET(xchunk_ptr, xut_index);
+    XSLICE_QUEUE_ALLOCATED_SET(xchunk_ptr, xut_index, x_uint16_t);
 
     xchunk_ptr->xslice_queue.xut_bpos += 1;
     XASSERT(0 != xchunk_ptr->xslice_queue.xut_bpos);
 
     xchunk_ptr->xowner.xclass_ptr->xslice_count -= 1;
 
-    return XCHUNK_SLICE_GET(xchunk_ptr, xut_index);
+    return XSLICE_QUEUE_GET(xchunk_ptr, xut_index);
 }
 
 /**********************************************************/
@@ -728,8 +661,8 @@ static x_int32_t xchunk_recyc_slice(
 {
     XASSERT((xmem_slice > XCHUNK_LADDR(xchunk_ptr)) &&
             (xmem_slice < XCHUNK_RADDR(xchunk_ptr)));
-    XASSERT(XCHUNK_SLICE_QSIZE(xchunk_ptr) > 0);
-    XASSERT(!XCHUNK_SLICE_QFULL(xchunk_ptr));
+    XASSERT(XSLICE_QUEUE_CAPACITY(xchunk_ptr) > 0);
+    XASSERT(!XSLICE_QUEUE_IS_FULL(xchunk_ptr, x_uint16_t));
 
     x_int32_t  xit_error  = XMEM_ERR_UNKNOW;
     x_uint32_t xut_offset = 0;
@@ -756,27 +689,27 @@ static x_int32_t xchunk_recyc_slice(
         //======================================
 
         xut_index = xut_offset / xchunk_ptr->xslice_size;
-        XASSERT(xut_index < XCHUNK_SLICE_QSIZE(xchunk_ptr));
+        XASSERT(xut_index < XSLICE_QUEUE_CAPACITY(xchunk_ptr));
 
         // 判断分片是否已经被回收
-        if (!XCHUNK_SLICE_ALLOCATED(xchunk_ptr, xut_index))
+        if (!XSLICE_QUEUE_IS_ALLOCATED(xchunk_ptr, xut_index, x_uint16_t))
         {
             xit_error = XMEM_ERR_SLICE_RECYCLED;
             break;
         }
 
-        XASSERT(!xchunk_find_qindex(xchunk_ptr, (x_uint16_t)xut_index));
-        XCHUNK_SLICE_INDEX_SET(
-            xchunk_ptr, xchunk_ptr->xslice_queue.xut_epos, xut_index);
+        XASSERT(!xchunk_find_index(xchunk_ptr, (x_uint16_t)xut_index));
+        XSLICE_QUEUE_INDEX_SET(
+            xchunk_ptr, xchunk_ptr->xslice_queue.xut_epos, xut_index, x_uint16_t);
 
         // 标识分片“未被分配出去”
-        XCHUNK_SLICE_ALLOCATED_RESET(xchunk_ptr, xut_index);
+        XSLICE_QUEUE_ALLOCATED_RESET(xchunk_ptr, xut_index, x_uint16_t);
 
         xchunk_ptr->xslice_queue.xut_epos += 1;
 
         if (0 == xchunk_ptr->xslice_queue.xut_epos)
         {
-            xchunk_ptr->xslice_queue.xut_epos  = XCHUNK_SLICE_COUNT(xchunk_ptr);
+            xchunk_ptr->xslice_queue.xut_epos  = XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t);
             xchunk_ptr->xslice_queue.xut_bpos %= xchunk_ptr->xslice_queue.xut_capacity;
             xchunk_ptr->xslice_queue.xut_epos += xchunk_ptr->xslice_queue.xut_bpos;
         }
@@ -813,7 +746,7 @@ static x_void_t xclass_list_erase_chunk(
         xchunk_ptr->xlist_node.xchunk_prev;
 
     xclass_ptr->xchunk_count -= 1;
-    xclass_ptr->xslice_count -= XCHUNK_SLICE_COUNT(xchunk_ptr);
+    xclass_ptr->xslice_count -= XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t);
 }
 
 /**********************************************************/
@@ -838,7 +771,7 @@ static x_void_t xclass_list_push_head(
     XCLASS_LIST_HEAD(xclass_ptr)->xlist_node.xchunk_next  = xchunk_ptr;
 
     xclass_ptr->xchunk_count += 1;
-    xclass_ptr->xslice_count += XCHUNK_SLICE_COUNT(xchunk_ptr);
+    xclass_ptr->xslice_count += XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t);
 }
 
 /**********************************************************/
@@ -863,7 +796,7 @@ static x_void_t xclass_list_push_tail(
     XCLASS_LIST_TAIL(xclass_ptr)->xlist_node.xchunk_prev = xchunk_ptr;
 
     xclass_ptr->xchunk_count += 1;
-    xclass_ptr->xslice_count += XCHUNK_SLICE_COUNT(xchunk_ptr);
+    xclass_ptr->xslice_count += XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t);
 }
 
 /**********************************************************/
@@ -894,13 +827,13 @@ static x_void_t xclass_list_update(
     }
 #endif
 
-    if (XCHUNK_SLICE_COUNT(xchunk_ptr) >
-        XCHUNK_SLICE_COUNT(XCLASS_LIST_FRONT(xclass_ptr)))
+    if (XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t) >
+        XSLICE_QUEUE_COUNT(XCLASS_LIST_FRONT(xclass_ptr), x_uint16_t))
     {
         xclass_list_erase_chunk(xclass_ptr, xchunk_ptr);
         xclass_list_push_head(xclass_ptr, xchunk_ptr);
     }
-    else if (XCHUNK_SLICE_EMPTY(xchunk_ptr))
+    else if (XSLICE_QUEUE_IS_EMPTY(xchunk_ptr))
     {
         if (xchunk_ptr != xclass_ptr->xlist_tail.xlist_node.xchunk_prev)
         {
@@ -927,7 +860,7 @@ static xchunk_handle_t xclass_get_non_empty_chunk(xclass_handle_t xclass_ptr)
          xchunk_ptr != XCLASS_LIST_TAIL(xclass_ptr);
          xchunk_ptr  = xchunk_ptr->xlist_node.xchunk_next)
     {
-        if (!XCHUNK_SLICE_EMPTY(xchunk_ptr))
+        if (!XSLICE_QUEUE_IS_EMPTY(xchunk_ptr))
         {
             if (xchunk_ptr != XCLASS_LIST_FRONT(xclass_ptr))
             {
@@ -1033,8 +966,10 @@ static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
 
     if (++xsrque_ptr->xarray_epos == XSLICE_ARRAY_SIZE)
     {
-        xarray_ptr = (xslice_arrptr_t)xatomic_xchg_ptr(
-            (x_void_t * volatile *)&xsrque_ptr->xarray_sptr, (x_void_t *)X_NULL);
+        xarray_ptr =
+            (xslice_arrptr_t)xatomic_xchg_ptr(
+                    (x_void_t * volatile *)&xsrque_ptr->xarray_sptr,
+                    (x_void_t *)X_NULL);
 
         if (X_NULL != xarray_ptr)
         {
@@ -1044,7 +979,8 @@ static x_void_t xsrque_push(xsrque_handle_t xsrque_ptr, xmem_slice_t xemt_value)
         else
         {
             xsrque_ptr->xarray_eptr->xarray_next =
-                (xslice_arrptr_t)xmem_heap_alloc(sizeof(xslice_array_t), X_NULL, X_NULL);
+                (xslice_arrptr_t)xmem_heap_alloc(
+                    sizeof(xslice_array_t), X_NULL, X_NULL);
             xsrque_ptr->xarray_eptr->xarray_prev = xsrque_ptr->xarray_eptr;
         }
 
@@ -1232,10 +1168,10 @@ static xrbt_void_t xrbtree_chunk_destruct(
 
     xchunk_handle_t xchunk_ptr = *(xchunk_handle_t *)xrbt_vkey;
 
-    XASSERT(XCHUNK_SLICE_QFULL(xchunk_ptr));
+    XASSERT(XSLICE_QUEUE_QFULL(xchunk_ptr));
 
     // 分片容量大于 0 的情况下，chunk 才会进行分类管理
-    if (XCHUNK_SLICE_QSIZE(xchunk_ptr) > 0)
+    if (XSLICE_QUEUE_CAPACITY(xchunk_ptr) > 0)
     {
         XASSERT(X_NULL != xchunk_ptr->xowner.xclass_ptr);
         xclass_list_erase_chunk(xchunk_ptr->xowner.xclass_ptr, xchunk_ptr);
@@ -1534,7 +1470,7 @@ static xchunk_handle_t xmpool_alloc_chunk(
              ++xut_iter)
         {
             // 最高位为 0 值，表示分片未被分配出去
-            XCHUNK_SLICE_INDEX(xchunk_ptr, xut_iter) = xut_iter & 0x7FFF;
+            XSLICE_QUEUE_INDEX(xchunk_ptr, xut_iter) = xut_iter & 0x7FFF;
         }
         xchunk_ptr->xslice_queue.xut_bpos = 0;
         xchunk_ptr->xslice_queue.xut_epos =
@@ -1747,14 +1683,14 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size)
                             xut_size - sizeof(xmem_chunk_t));
         if (X_NULL != xchunk_ptr)
         {
-            xmem_slice = XCHUNK_SLICE_BEGIN(xchunk_ptr);
+            xmem_slice = XSLICE_QUEUE_BEGIN(xchunk_ptr);
         }
     }
     else
     {
         if ((X_NULL != xmpool_ptr->xchunk_cptr) &&
             (xut_size == xmpool_ptr->xchunk_cptr->xslice_size) &&
-            !XCHUNK_SLICE_EMPTY(xmpool_ptr->xchunk_cptr))
+            !XSLICE_QUEUE_IS_EMPTY(xmpool_ptr->xchunk_cptr))
         {
             xchunk_ptr = xmpool_ptr->xchunk_cptr;
         }
@@ -1842,9 +1778,9 @@ x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice)
     // 回收 slice
 
     // 若 chunk 对象没有多个分片，则不属于分类管理的 chunk 对象，可直接删除
-    if (XCHUNK_SLICE_QSIZE(xchunk_ptr) == 0)
+    if (XSLICE_QUEUE_CAPACITY(xchunk_ptr) == 0)
     {
-        if (xmem_slice != XCHUNK_SLICE_BEGIN(xchunk_ptr))
+        if (xmem_slice != XSLICE_QUEUE_BEGIN(xchunk_ptr))
         {
             return XMEM_ERR_SLICE_UNALIGNED;
         }
@@ -1900,7 +1836,7 @@ x_void_t xmpool_release_unused(xmpool_handle_t xmpool_ptr)
         for (xchunk_ptr = XCLASS_LIST_FRONT(xclass_ptr);
              xchunk_ptr != XCLASS_LIST_TAIL(xclass_ptr);)
         {
-            if (XCHUNK_SLICE_QFULL(xchunk_ptr))
+            if (XSLICE_QUEUE_IS_FULL(xchunk_ptr, x_uint16_t))
             {
                 if (xmpool_ptr->xchunk_cptr == xchunk_ptr)
                 {
