@@ -23,6 +23,10 @@
 #ifndef __XMEM_POOL_H__
 #define __XMEM_POOL_H__
 
+#ifndef __XMEM_COMM_H__
+#error "Please include xmem_comm.h"
+#endif // __XMEM_COMM_H__
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef __cplusplus
@@ -59,9 +63,6 @@ typedef x_void_t (* xfunc_free_t)(x_void_t * xchunk_ptr,
                                   x_size_t xst_size,
                                   x_handle_t xht_owner,
                                   x_handle_t xht_context);
-
-/** 内存分片类型 */
-typedef x_byte_t *  xmem_slice_t;
 
 /** 内存池对象的结构体声明 */
 struct xmem_pool_t;
