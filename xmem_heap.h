@@ -26,7 +26,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 /** 堆内存块的类型定义 */
-typedef xmem_handle_t xmheap_chunk_t;
+typedef xmem_handle_t xchunk_memptr_t;
+
+/** 持有者对象句柄 */
+typedef xmem_handle_t xowner_handle_t;
 
 /** 堆内存管理的结构体声明 */
 struct xmem_heap_t;
@@ -56,13 +59,13 @@ x_void_t xmheap_destroy(xmheap_handle_t xmheap_ptr);
  * @param [in ] xchunk_size : 请求的内存块大小。
  * @param [in ] xowner_ptr  : 持有该（返回的）内存块的标识句柄。
  * 
- * @return xmheap_chunk_t
+ * @return xchunk_memptr_t
  *         - 成功，返回 内存块；
  *         - 失败，返回 X_NULL。
  */
-xmheap_chunk_t xmheap_alloc(xmheap_handle_t xmheap_ptr,
-                            x_uint32_t xchunk_size,
-                            x_handle_t xowner_ptr);
+xchunk_memptr_t xmheap_alloc(xmheap_handle_t xmheap_ptr,
+                             x_uint32_t xchunk_size,
+                             xowner_handle_t xowner_ptr);
 
 /**********************************************************/
 /**
@@ -76,7 +79,7 @@ xmheap_chunk_t xmheap_alloc(xmheap_handle_t xmheap_ptr,
  *         - 失败，返回 错误码。
  */
 x_int32_t xmheap_recyc(xmheap_handle_t xmheap_ptr,
-                       xmheap_chunk_t xchunk_ptr);
+                       xchunk_memptr_t xchunk_ptr);
 
 ////////////////////////////////////////////////////////////////////////////////
 
