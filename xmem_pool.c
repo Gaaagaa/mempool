@@ -742,6 +742,9 @@ static x_void_t xclass_list_erase_chunk(
     xchunk_ptr->xlist_node.xchunk_next->xlist_node.xchunk_prev =
         xchunk_ptr->xlist_node.xchunk_prev;
 
+    xchunk_ptr->xlist_node.xchunk_prev = X_NULL;
+    xchunk_ptr->xlist_node.xchunk_next = X_NULL;
+
     xclass_ptr->xchunk_count -= 1;
     xclass_ptr->xslice_count -= XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t);
 }
