@@ -1,4 +1,25 @@
-﻿
+﻿/**
+ * @file    mempool_test.cpp
+ * <pre>
+ * Copyright (c) 2019, Gaaagaa All rights reserved.
+ * 
+ * 文件名称：mempool_test.cpp
+ * 创建日期：2019年09月24日
+ * 文件标识：
+ * 文件摘要：内存池测试程序。
+ * 
+ * 当前版本：1.0.0.0
+ * 作    者：
+ * 完成日期：2019年09月24日
+ * 版本摘要：
+ * 
+ * 取代版本：
+ * 原作者  ：
+ * 完成日期：
+ * 版本摘要：
+ * </pre>
+ */
+
 #include "xmem_comm.h"
 
 #include <stdio.h>
