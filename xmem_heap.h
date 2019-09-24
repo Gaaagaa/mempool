@@ -26,7 +26,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 /** 堆内存块的类型定义 */
-typedef x_void_t * xmheap_chunk_t;
+typedef xmem_handle_t xmheap_chunk_t;
 
 /** 堆内存管理的结构体声明 */
 struct xmem_heap_t;
@@ -50,33 +50,33 @@ x_void_t xmheap_destroy(xmheap_handle_t xmheap_ptr);
 
 /**********************************************************/
 /**
- * @brief 申请堆内存块。
+ * @brief 申请内存块。
  * 
- * @param [in ] xmheap_ptr   : 堆内存管理 对象的操作句柄。
- * @param [in ] xchunk_size  : 请求的堆内存块大小。
- * @param [in ] xchunk_owner : 持有该（返回的）堆内存块的标识句柄。
+ * @param [in ] xmheap_ptr  : 堆内存管理 对象的操作句柄。
+ * @param [in ] xchunk_size : 请求的内存块大小。
+ * @param [in ] xowner_ptr  : 持有该（返回的）内存块的标识句柄。
  * 
  * @return xmheap_chunk_t
- *         - 成功，返回 堆内存块；
+ *         - 成功，返回 内存块；
  *         - 失败，返回 X_NULL。
  */
 xmheap_chunk_t xmheap_alloc(xmheap_handle_t xmheap_ptr,
                             x_uint32_t xchunk_size,
-                            x_handle_t xchunk_owner);
+                            x_handle_t xowner_ptr);
 
 /**********************************************************/
 /**
- * @brief 回收堆内存块。
+ * @brief 回收内存块。
  * 
- * @param [in ] xmheap_ptr   : 堆内存管理 对象的操作句柄。
- * @param [in ] xchunk_ptr   : 待释放的堆内存块。
- * @param [in ] xchunk_size  : 待释放的堆内存块大小。
- * @param [in ] xchunk_owner : 持有该堆内存块的标识句柄。
+ * @param [in ] xmheap_ptr  : 堆内存管理 对象的操作句柄。
+ * @param [in ] xchunk_ptr  : 待释放的内存块。
+ * 
+ * @return x_int32_t
+ *         - 成功，返回 XMEM_ERR_OK；
+ *         - 失败，返回 错误码。
  */
-x_void_t xmheap_recyc(xmheap_handle_t xmheap_ptr,
-                      xmheap_chunk_t xchunk_ptr,
-                      x_uint32_t xchunk_size,
-                      x_handle_t xchunk_owner);
+x_int32_t xmheap_recyc(xmheap_handle_t xmheap_ptr,
+                       xmheap_chunk_t xchunk_ptr);
 
 ////////////////////////////////////////////////////////////////////////////////
 
