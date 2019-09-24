@@ -662,14 +662,14 @@ static x_int32_t xchunk_recyc_slice(
         xut_offset = (x_uint32_t)(xmem_slice - XCHUNK_LADDR(xchunk_ptr));
         if (xut_offset < XSLICE_QUEUE(xchunk_ptr).xut_offset)
         {
-            xit_error = XMEM_ERR_SLICE_UNALIGNED;
+            xit_error = XMEM_ERR_UNALIGNED;
             break;
         }
 
         xut_offset -= XSLICE_QUEUE(xchunk_ptr).xut_offset;
         if (0 != (xut_offset % XSLICE_MSIZE(xchunk_ptr)))
         {
-            xit_error = XMEM_ERR_SLICE_UNALIGNED;
+            xit_error = XMEM_ERR_UNALIGNED;
             break;
         }
 
@@ -681,7 +681,7 @@ static x_int32_t xchunk_recyc_slice(
         // 判断分片是否已经被回收
         if (!XSLICE_QUEUE_IS_ALLOCATED(xchunk_ptr, xut_index, x_uint16_t))
         {
-            xit_error = XMEM_ERR_SLICE_RECYCLED;
+            xit_error = XMEM_ERR_RECYCLED;
             break;
         }
 
@@ -733,6 +733,8 @@ static x_void_t xclass_list_erase_chunk(
                             xchunk_handle_t xchunk_ptr)
 {
     XASSERT(xclass_ptr == xchunk_ptr->xowner.xclass_ptr);
+    XASSERT(X_NULL != xchunk_ptr->xlist_node.xchunk_prev);
+    XASSERT(X_NULL != xchunk_ptr->xlist_node.xchunk_next);
 
     xchunk_ptr->xlist_node.xchunk_prev->xlist_node.xchunk_next =
         xchunk_ptr->xlist_node.xchunk_next;
@@ -1121,7 +1123,7 @@ static xrbt_void_t xrbtree_chunk_destruct(
 
     xchunk_handle_t xchunk_ptr = *(xchunk_handle_t *)xrbt_vkey;
 
-    XASSERT(XSLICE_QUEUE_QFULL(xchunk_ptr));
+    XASSERT(XSLICE_QUEUE_IS_FULL(xchunk_ptr, x_uint16_t));
 
     // 分片容量大于 0 的情况下，chunk 才会进行分类管理
     if (XSLICE_QUEUE_CAPACITY(xchunk_ptr) > 0)
@@ -1724,7 +1726,7 @@ x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice)
 
     if (X_NULL == xchunk_ptr)
     {
-        return XMEM_ERR_SLICE_NOT_FOUND;
+        return XMEM_ERR_NOT_FOUND;
     }
 
     //======================================
@@ -1735,7 +1737,7 @@ x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice)
     {
         if (xmem_slice != XSLICE_QUEUE_BEGIN(xchunk_ptr))
         {
-            return XMEM_ERR_SLICE_UNALIGNED;
+            return XMEM_ERR_UNALIGNED;
         }
 
         if (xchunk_ptr == xmpool_ptr->xchunk_cptr)

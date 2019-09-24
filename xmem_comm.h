@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file    xmem_comm.h
  * <pre>
  * Copyright (c) 2019, Gaaagaa All rights reserved.
@@ -79,12 +79,13 @@
  */
 typedef enum xmem_err_code
 {
-    XMEM_ERR_OK              = 0x00000000, ///< 表示成功
-    XMEM_ERR_UNKNOW          = 0xFFFFFFFF, ///< 未知错误
+    XMEM_ERR_OK        = 0x00000000, ///< 表示成功
+    XMEM_ERR_UNKNOW    = 0xFFFFFFFF, ///< 未知错误
 
-    XMEM_ERR_SLICE_NOT_FOUND = 0x00011010, ///< 内存分片在找不到
-    XMEM_ERR_SLICE_UNALIGNED = 0x00011020, ///< 内存分片在分块中的地址未对齐
-    XMEM_ERR_SLICE_RECYCLED  = 0x00011030, ///< 内存分片已经被回收
+    XMEM_ERR_NOT_FOUND = 0x00011010, ///< 内存对象在找不到
+    XMEM_ERR_UNALIGNED = 0x00011020, ///< 内存对象在分块（或 区块）中的地址未对齐
+    XMEM_ERR_RECYCLED  = 0x00011030, ///< 内存对象已经被回收
+    XMEM_ERR_REULIMIT  = 0x00011040, ///< 达到资源上限
 } xmem_err_code;
 
 /** 原子锁类型 */
@@ -385,7 +386,7 @@ static inline x_uint32_t xatomic_sub_32(
  */
 static inline x_void_t xatomic_spin_lock(xatomic_lock_t * xspinlock)
 {
-    while (0 == xatomic_cmpxchg_32(xspinlock, 1, 0))
+    while (0 != xatomic_cmpxchg_32(xspinlock, 1, 0))
         xsys_yield();
 }
 
@@ -400,6 +401,7 @@ static inline x_void_t xatomic_spin_unlock(xatomic_lock_t * xspinlock)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "xmem_heap.h"
 #include "xmem_pool.h"
 
 ////////////////////////////////////////////////////////////////////////////////
