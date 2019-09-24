@@ -801,50 +801,6 @@ static x_void_t xclass_list_push_tail(
 
 /**********************************************************/
 /**
- * @brief 当 chunk 对象有 分片 申请（或 回收）操作时，
- *        更新 chunk 对象在分类管理的链表中的位置，优化后续的操作。
- */
-static x_void_t xclass_list_update(
-                            xclass_handle_t xclass_ptr,
-                            xchunk_handle_t xchunk_ptr)
-{
-    if (xclass_ptr->xchunk_count <= 1)
-    {
-        return;
-    }
-
-#if 0
-    if (X_CHUNK_SLICE_QFULL(xchunk_ptr))
-    {
-        // 若当前分类下的分片数量，大于 chunk 容量的 4 倍，
-        // 则直接释放掉当前 chunk 对象，否则，后续有可能将置于链表的起始位置
-        if (xclass_ptr->xslice_count >
-            (x_uint32_t)(4 * X_CHUNK_SLICE_QSIZE(xchunk_ptr)))
-        {
-            xmpool_dealloc_chunk(xclass_ptr->xmpool_ptr, xchunk_ptr);
-            return;
-        }
-    }
-#endif
-
-    if (XSLICE_QUEUE_COUNT(xchunk_ptr, x_uint16_t) >
-        XSLICE_QUEUE_COUNT(XCLASS_LIST_FRONT(xclass_ptr), x_uint16_t))
-    {
-        xclass_list_erase_chunk(xclass_ptr, xchunk_ptr);
-        xclass_list_push_head(xclass_ptr, xchunk_ptr);
-    }
-    else if (XSLICE_QUEUE_IS_EMPTY(xchunk_ptr))
-    {
-        if (xchunk_ptr != xclass_ptr->xlist_tail.xlist_node.xchunk_prev)
-        {
-            xclass_list_erase_chunk(xclass_ptr, xchunk_ptr);
-            xclass_list_push_tail(xclass_ptr, xchunk_ptr);
-        }
-    }
-}
-
-/**********************************************************/
-/**
  * @brief 从分类管理的 class 对象中，获取首个非空（仍可分配到分片）chunk 对象。
  */
 static xchunk_handle_t xclass_get_non_empty_chunk(xclass_handle_t xclass_ptr)
@@ -1719,7 +1675,6 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size)
         else
         {
             xmem_slice = xchunk_alloc_slice(xchunk_ptr);
-            xclass_list_update(xchunk_ptr->xowner.xclass_ptr, xchunk_ptr);
         }
     }
 
@@ -1806,7 +1761,6 @@ x_int32_t xmpool_recyc(xmpool_handle_t xmpool_ptr, xmem_slice_t xmem_slice)
     if (XMEM_ERR_OK == xit_error)
     {
         xmpool_ptr->xsize_using -= xchunk_ptr->xslice_size;
-        xclass_list_update(xchunk_ptr->xowner.xclass_ptr, xchunk_ptr);
     }
 
     xmpool_ptr->xchunk_cptr = xchunk_ptr;
