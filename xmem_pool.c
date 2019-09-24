@@ -1467,8 +1467,10 @@ static xchunk_handle_t xmpool_alloc_chunk(
              ++xut_iter)
         {
             // 最高位为 0 值，表示分片未被分配出去
-            XSLICE_QUEUE_INDEX(xchunk_ptr, xut_iter) = xut_iter & 0x7FFF;
+            XSLICE_QUEUE(xchunk_ptr).xut_index[xut_iter] =
+                            (xut_iter & XSLICE_IMASK(x_uint16_t));
         }
+
         XSLICE_QUEUE(xchunk_ptr).xut_bpos = 0;
         XSLICE_QUEUE(xchunk_ptr).xut_epos = XSLICE_QUEUE_CAPACITY(xchunk_ptr);
     }
