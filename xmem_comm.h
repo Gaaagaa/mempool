@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <sched.h>
 #else
 #error "Unknow platform"
 #endif
@@ -57,7 +58,7 @@
 #if ENABLE_XASSERT
 #define XASSERT_CHECK(xcheck, xptr)  do { if ((xcheck)) XASSERT(xptr); } while (0)
 #else // !ENABLE_XASSERT
-#define XASSERT_CHECK(xcheck, xptr)
+#define XASSERT_CHECK(xcheck, xptr)  do { (xcheck); } while (0)
 #endif // ENABLE_XASSERT
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,12 @@ typedef enum xmem_err_code
     XMEM_ERR_SLICE_UNALIGNED = 0x00011020, ///< 内存分片在分块中的地址未对齐
     XMEM_ERR_SLICE_RECYCLED  = 0x00011030, ///< 内存分片已经被回收
 } xmem_err_code;
+
+/** 原子锁类型 */
+typedef volatile x_uint32_t      xatomic_lock_t;
+
+/** 任意的内存对象句柄 */
+typedef x_void_t *  xmem_handle_t;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -173,6 +180,117 @@ typedef x_byte_t *  xmem_slice_t;
 
 /**********************************************************/
 /**
+ * @brief 获取当前线程 ID 值。
+ */
+static inline x_uint32_t xsys_tid(void)
+{
+#ifdef _MSC_VER
+    return (x_uint32_t)GetCurrentThreadId();
+#elif defined(__GNUC__)
+    return (x_uint32_t)syscall(__NR_gettid);
+#else
+    XASSERT(X_FALSE);
+    return 0;
+#endif
+}
+
+/**********************************************************/
+/**
+ * @brief 使当前线程让出 CPU。
+ */
+static inline x_void_t xsys_yield(void)
+{
+#ifdef _MSC_VER
+    SwitchToThread();
+#elif defined(__GNUC__)
+    sched_yield();
+#else
+    XASSERT(X_FALSE);
+#endif
+}
+
+/**********************************************************/
+/**
+ * @brief 对当前线程执行 Sleep() 操作，时间单位为 毫秒。
+ */
+static inline x_void_t xsys_msleep(x_uint32_t xut_mseconds)
+{
+#ifdef _MSC_VER
+    Sleep(xut_mseconds);
+#elif defined(__GNUC__)
+    usleep(xut_mseconds * 1000);
+#else
+    XASSERT(X_FALSE);
+#endif
+}
+
+/**********************************************************/
+/**
+ * @brief 从系统中申请堆内存。
+ */
+static inline xmem_handle_t xsys_heap_alloc(x_size_t xst_size)
+{
+#ifdef _MSC_VER
+    return (xmem_handle_t)HeapAlloc(GetProcessHeap(), 0, xst_size);
+#elif defined(__GNUC__)
+    return (xblock_handle_t)mmap(X_NULL,
+                                 xst_size,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE | MAP_ANONYMOUS,
+                                 -1,
+                                 0);
+#else
+    XASSERT(X_FALSE);
+    return X_NULL;
+#endif
+}
+
+/**********************************************************/
+/**
+ * @brief 将堆内存释放回系统中。
+ */
+static inline x_void_t xsys_heap_free(
+    xmem_handle_t xblock_ptr, x_size_t xst_size)
+{
+#ifdef _MSC_VER
+    HeapFree(GetProcessHeap(), 0, xblock_ptr);
+#elif defined(__GNUC__)
+    munmap(xblock_ptr, xst_size);
+#else
+    XASSERT(X_FALSE);
+#endif
+}
+
+/**********************************************************/
+/**
+ * @brief 使用 C 标准库的接口申请内存。
+ */
+static inline xmem_handle_t xmem_alloc(x_size_t xst_size)
+{
+    return malloc(xst_size);
+}
+
+/**********************************************************/
+/**
+ * @brief 使用 C 标准库的接口释放内存。
+ */
+static inline x_void_t xmem_free(xmem_handle_t xmem_ptr)
+{
+    free(xmem_ptr);
+}
+
+/**********************************************************/
+/**
+ * @brief 内存清零。
+ */
+static inline xmem_handle_t xmem_clear(
+    xmem_handle_t xmem_ptr, x_uint32_t xut_size)
+{
+    return memset(xmem_ptr, 0, xut_size);
+}
+
+/**********************************************************/
+/**
  * @brief 原子操作：比较成功后赋值。
  * @note  返回目标变量的旧值。
  */
@@ -202,7 +320,9 @@ static inline x_void_t * xatomic_xchg_ptr(
  * @note  返回目标变量的旧值。
  */
 static inline x_uint32_t xatomic_cmpxchg_32(
-    volatile x_uint32_t * xut_dest, x_uint32_t xut_exchange, x_uint32_t xut_compare)
+                                volatile x_uint32_t * xut_dest,
+                                x_uint32_t xut_exchange,
+                                x_uint32_t xut_compare)
 {
 #ifdef _MSC_VER
     return _InterlockedCompareExchange(xut_dest, xut_exchange, xut_compare);
@@ -258,18 +378,21 @@ static inline x_uint32_t xatomic_sub_32(
 
 /**********************************************************/
 /**
- * @brief 获取当前线程 ID 值。
+ * @brief 旋转锁的加锁操作。
  */
-static inline x_uint32_t xsys_tid(void)
+static inline x_void_t xatomic_spin_lock(xatomic_lock_t * xspinlock)
 {
-#ifdef _MSC_VER
-    return (x_uint32_t)GetCurrentThreadId();
-#elif defined(__GNUC__)
-    return (x_uint32_t)syscall(__NR_gettid);
-#else
-    XASSERT(X_FALSE);
-    return 0;
-#endif
+    while (0 == xatomic_cmpxchg_32(xspinlock, 1, 0))
+        xsys_yield();
+}
+
+/**********************************************************/
+/**
+ * @brief 旋转锁的解锁操作。
+ */
+static inline x_void_t xatomic_spin_unlock(xatomic_lock_t * xspinlock)
+{
+    XASSERT_CHECK((1 != xatomic_cmpxchg_32(xspinlock, 0, 1)), X_FALSE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
