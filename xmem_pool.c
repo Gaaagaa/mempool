@@ -1459,7 +1459,7 @@ static xchunk_handle_t xmpool_alloc_chunk(
 
         XSLICE_QUEUE(xchunk_ptr).xut_capacity =
                 xmem_chunk_capacity(xchunk_size, xslice_size);
-        XASSERT(XSLICE_QUEUE_CAPACITY(xchunk_ptr) <= 0x7FFF);
+        XASSERT(XSLICE_QUEUE_CAPACITY(xchunk_ptr) <= XSLICE_IMASK(x_uint16_t));
 
         XSLICE_QUEUE(xchunk_ptr).xut_offset =
                 (xchunk_size - 
