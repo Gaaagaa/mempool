@@ -23,9 +23,6 @@
 #include "xmem_comm.h"
 #include "xrbtree.h"
 
-#include <stdlib.h>
-#include <memory.h>
-
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef __GNUC__
