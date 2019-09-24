@@ -25,6 +25,9 @@
 
 #include "xtypes.h"
 
+#include <stdlib.h>
+#include <memory.h>
+
 #ifdef _MSC_VER
 #include <windows.h>
 #elif defined(__GNUC__)
