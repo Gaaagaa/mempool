@@ -1643,7 +1643,8 @@ xmheap_handle_t xmheap_create(x_uint32_t xsize_block, x_uint64_t xsize_ulimit)
 
     //======================================
 
-    xmheap_handle_t xmheap_ptr = xmem_alloc(sizeof(xmem_heap_t));
+    xmheap_handle_t xmheap_ptr =
+            (xmheap_handle_t)xmem_alloc(sizeof(xmem_heap_t));
     XASSERT(X_NULL != xmheap_ptr);
 
     xmem_clear(xmheap_ptr, sizeof(xmem_heap_t));
@@ -1897,7 +1898,6 @@ x_int32_t xmheap_hit_chunk(xmheap_handle_t xmheap_ptr,
 
     x_int32_t       xit_error = XMEM_ERR_UNKNOW;
     xchunk_ctxptr_t xcctxt_ptr = X_NULL;
-    x_rbnode_iter   xiter_node = X_NULL;
 
     xatomic_spin_lock(&xmheap_ptr->xmheap_lock);
 
