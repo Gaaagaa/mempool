@@ -364,7 +364,7 @@ static x_void_t xmem_bits_set(xmem_slice_t xmem_bits,
     //======================================
     // 跨字节的情况
 
-    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_head = (8 - (xut_bpos & 7)) & 7;
     xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
@@ -443,7 +443,7 @@ static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
     //======================================
     // 跨字节的情况
 
-    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_head = (8 - (xut_bpos & 7)) & 7;
     xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
@@ -538,7 +538,7 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
     //======================================
     // 跨字节的情况
 
-    xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
+    xut_head = (8 - (xut_bpos & 7)) & 7;
     xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
