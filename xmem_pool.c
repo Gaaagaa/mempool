@@ -21,7 +21,6 @@
  */
 
 #include "xmem_comm.h"
-#include "xmem_pool.h"
 #include "xrbtree.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -815,7 +814,7 @@ static xchunk_handle_t xclass_get_non_empty_chunk(xclass_handle_t xclass_ptr)
          xchunk_ptr != XCLASS_LIST_TAIL(xclass_ptr);
          xchunk_ptr  = xchunk_ptr->xlist_node.xchunk_next)
     {
-        if (!XSLICE_QUEUE_IS_EMPTY(xchunk_ptr))
+        if (XSLICE_QUEUE_NOT_EMPTY(xchunk_ptr))
         {
             if (xchunk_ptr != XCLASS_LIST_FRONT(xclass_ptr))
             {
@@ -1393,7 +1392,11 @@ static xchunk_handle_t xmpool_alloc_chunk(
                             xchunk_size,
                             (x_handle_t)xmpool_ptr,
                             xmpool_ptr->xht_context);
-    XASSERT(X_NULL != xchunk_ptr);
+    if (X_NULL == xchunk_ptr)
+    {
+        return X_NULL;
+    }
+
     xmpool_ptr->xsize_cached += xchunk_size;
 
     xmem_clear(xchunk_ptr, sizeof(xmem_chunk_t));
@@ -1649,7 +1652,7 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size)
 
         if ((X_NULL != xmpool_ptr->xchunk_cptr) &&
             (xut_size == xmpool_ptr->xchunk_cptr->xslice_size) &&
-            !XSLICE_QUEUE_IS_EMPTY(xmpool_ptr->xchunk_cptr))
+            XSLICE_QUEUE_NOT_EMPTY(xmpool_ptr->xchunk_cptr))
         {
             xchunk_ptr = xmpool_ptr->xchunk_cptr;
         }
