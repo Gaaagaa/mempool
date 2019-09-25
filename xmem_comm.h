@@ -134,6 +134,10 @@ typedef x_byte_t *  xmem_slice_t;
 #define XSLICE_QUEUE_IS_EMPTY(xmsque_ptr) \
     (XSLICE_QUEUE(xmsque_ptr).xut_epos == XSLICE_QUEUE(xmsque_ptr).xut_bpos)
 
+/** 分片队列是否非空，即所有分片都已经被分配出去 */
+#define XSLICE_QUEUE_NOT_EMPTY(xmsque_ptr) \
+    (XSLICE_QUEUE(xmsque_ptr).xut_epos != XSLICE_QUEUE(xmsque_ptr).xut_bpos)
+
 /** 分片队列是否已满，即没有任何一个分片被分配出去 */
 #define XSLICE_QUEUE_IS_FULL(xmsque_ptr, __size_type) \
     (XSLICE_QUEUE_COUNT(xmsque_ptr, __size_type) == \
