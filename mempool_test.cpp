@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <assert.h>
+#include <inttypes.h>
 #include <chrono>
 
 #ifdef _MSC_VER
@@ -43,13 +44,15 @@
 
 using xtime_clock = std::chrono::system_clock;
 using xtime_point = std::chrono::system_clock::time_point;
-using xtime_value = std::chrono::microseconds;
+using xtime_value = std::chrono::nanoseconds;
 
 #define xtime_dcast std::chrono::duration_cast< xtime_value >
 
 ////////////////////////////////////////////////////////////////////////////////
 
-x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_owner, x_handle_t xht_context)
+x_void_t * heap_alloc(x_size_t xst_size,
+                      x_handle_t xht_owner,
+                      x_handle_t xht_context)
 {
 #ifdef _MSC_VER
     return HeapAlloc(GetProcessHeap(), 0, xst_size);
@@ -58,7 +61,10 @@ x_void_t * heap_alloc(x_size_t xst_size, x_handle_t xht_owner, x_handle_t xht_co
 #endif // _MSC_VER
 }
 
-x_void_t heap_free(x_void_t * xmt_heap, x_size_t xst_size, x_handle_t xht_owner, x_handle_t xht_context)
+x_void_t heap_free(x_void_t * xmt_heap,
+                   x_size_t xst_size,
+                   x_handle_t xht_owner,
+                   x_handle_t xht_context)
 {
 #ifdef _MSC_VER
     HeapFree(GetProcessHeap(), 0, xmt_heap);
@@ -66,6 +72,44 @@ x_void_t heap_free(x_void_t * xmt_heap, x_size_t xst_size, x_handle_t xht_owner,
     munmap(xmt_heap, xst_size);
 #endif // _MSC_VER
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+xmheap_handle_t xmheap_ptr = X_NULL;
+
+x_void_t * vx_alloc(x_size_t xst_size,
+                    x_handle_t xht_owner,
+                    x_handle_t xht_context)
+{
+    return xmheap_alloc(xmheap_ptr, (x_uint32_t)xst_size, xht_owner);
+}
+
+x_void_t vx_free(x_void_t * xmt_heap,
+                 x_size_t xst_size,
+                 x_handle_t xht_owner,
+                 x_handle_t xht_context)
+{
+    xmheap_recyc(xmheap_ptr, xmt_heap);
+}
+
+class xmheap_holder_t
+{
+public:
+    xmheap_holder_t(void)
+    {
+        xmheap_ptr = xmheap_create(32 * 1024 * 1024, 1024 * 1024 * 1024);
+    }
+
+    ~xmheap_holder_t(void)
+    {
+        double db = xmheap_valid_size(xmheap_ptr) / (1.0 * xmheap_cached_size(xmheap_ptr));
+        printf("[HEAP] availability : %12.6lf = [vs, cs, us] : %12" PRId64 ", %12" PRId64 ", %12" PRId64 ", \n",
+               db, xmheap_valid_size(xmheap_ptr), xmheap_cached_size(xmheap_ptr), xmheap_using_size(xmheap_ptr));
+
+        xmheap_destroy(xmheap_ptr);
+        xmheap_ptr = X_NULL;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,8 +121,10 @@ void test_xmpool1(x_int32_t xit_test_count, x_int32_t xit_test_size)
     xtime_point xtm_begin;
     xtime_value xtm_value;
 
+    xmheap_holder_t xholder;
+
     xmem_slice_t    xmem_slice = X_NULL;
-    xmpool_handle_t xmpool_ptr = xmpool_create(&heap_alloc, &heap_free, X_NULL);
+    xmpool_handle_t xmpool_ptr = xmpool_create(&vx_alloc, &vx_free, X_NULL);
 
     //======================================
 
@@ -94,9 +140,14 @@ void test_xmpool1(x_int32_t xit_test_count, x_int32_t xit_test_size)
         }
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
-    printf("[POOL, 1] time cost: %10d us\n", (int)xtm_value.count());
+    printf("[POOL, 1] time cost : %12" PRId64 " ns\n", xtm_value.count());
+    printf("[POOL, 1] alloc/free: %12.6lf ns\n", xtm_value.count() / (1.0 * xit_test_count * xit_test_size));
 
     //======================================
+
+    double db = xmpool_valid_size(xmpool_ptr) / (1.0 * xmpool_cached_size(xmpool_ptr));
+    printf("[POOL] availability : %12.6lf = [vs, cs, us] : %12" PRId64 ", %12" PRId64 ", %12" PRId64 ", \n",
+           db, xmpool_valid_size(xmpool_ptr), xmpool_cached_size(xmpool_ptr), xmpool_using_size(xmpool_ptr));
 
     xmpool_destroy(xmpool_ptr);
 }
@@ -125,7 +176,8 @@ void test_malloc1(x_int32_t xit_test_count, x_int32_t xit_test_size)
         }
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
-    printf("[LIBC, 1] time cost: %10d us\n", (int)xtm_value.count());
+    printf("[LIBC, 1] time cost : %12" PRId64 " ns\n", xtm_value.count());
+    printf("[LIBC, 1] alloc/free: %12.6lf ns\n", xtm_value.count() / (1.0 * xit_test_count * xit_test_size));
 
     //======================================
 }
@@ -141,8 +193,10 @@ void test_xmpool2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
     xtime_point xtm_begin;
     xtime_value xtm_value;
 
+    xmheap_holder_t xholder;
+
     xmem_slice_t  * xmem_slice = (xmem_slice_t *)calloc(xit_alloc_count, sizeof(xmem_slice_t));
-    xmpool_handle_t xmpool_ptr = xmpool_create(&heap_alloc, &heap_free, X_NULL);
+    xmpool_handle_t xmpool_ptr = xmpool_create(&vx_alloc, &vx_free, X_NULL);
 
     //======================================
 
@@ -151,6 +205,11 @@ void test_xmpool2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
     {
         for (xit_jter = 1; xit_jter <= xit_test_size; ++xit_jter)
         {
+            if (xit_jter >= 65537)
+            {
+                xit_jter = xit_jter;
+            }
+
             for (xit_kter = 0; xit_kter < xit_alloc_count; ++xit_kter)
             {
                 xmem_slice[xit_kter] = xmpool_alloc(xmpool_ptr, xit_jter);
@@ -166,9 +225,14 @@ void test_xmpool2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
         }
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
-    printf("[POOL, 2] time cost: %10d us\n", (int)xtm_value.count());
+    printf("[POOL, 2] time cost : %12" PRId64 " ns\n", xtm_value.count());
+    printf("[POOL, 2] alloc/free: %12.6lf ns\n", xtm_value.count() / (1.0 * xit_test_count * xit_test_size * xit_alloc_count));
 
     //======================================
+
+    double db = xmpool_valid_size(xmpool_ptr) / (1.0 * xmpool_cached_size(xmpool_ptr));
+    printf("[POOL] availability : %12.6lf = [vs, cs, us] : %12" PRId64 ", %12" PRId64 ", %12" PRId64 ", \n",
+           db, xmpool_valid_size(xmpool_ptr), xmpool_cached_size(xmpool_ptr), xmpool_using_size(xmpool_ptr));
 
     xmpool_destroy(xmpool_ptr);
     free(*xmem_slice);
@@ -207,7 +271,8 @@ void test_malloc2(x_int32_t xit_test_count, x_int32_t xit_alloc_count, x_int32_t
         }
     }
     xtm_value = xtime_dcast(xtime_clock::now() - xtm_begin);
-    printf("[LIBC, 2] time cost: %10d us\n", (int)xtm_value.count());
+    printf("[LIBC, 2] time cost : %12" PRId64 " ns\n", xtm_value.count());
+    printf("[LIBC, 2] alloc/free: %12.6lf ns\n", xtm_value.count() / (1.0 * xit_test_count * xit_test_size * xit_alloc_count));
 
     //======================================
 
