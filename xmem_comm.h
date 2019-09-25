@@ -32,6 +32,7 @@
 #include <windows.h>
 #elif defined(__GNUC__)
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <sched.h>
@@ -241,12 +242,12 @@ static inline xmem_handle_t xsys_heap_alloc(x_size_t xst_size)
 #ifdef _MSC_VER
     return (xmem_handle_t)HeapAlloc(GetProcessHeap(), 0, xst_size);
 #elif defined(__GNUC__)
-    return (xblock_handle_t)mmap(X_NULL,
-                                 xst_size,
-                                 PROT_READ | PROT_WRITE,
-                                 MAP_PRIVATE | MAP_ANONYMOUS,
-                                 -1,
-                                 0);
+    return (xmem_handle_t)mmap(X_NULL,
+                               xst_size,
+                               PROT_READ | PROT_WRITE,
+                               MAP_PRIVATE | MAP_ANONYMOUS,
+                               -1,
+                               0);
 #else
     XASSERT(X_FALSE);
     return X_NULL;
