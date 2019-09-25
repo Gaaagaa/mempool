@@ -43,18 +43,18 @@ typedef struct xchunk_context_t * xchunk_ctxptr_t;
 typedef struct xarray_cctxt_t   * xarray_ctxptr_t;
 
 #define XMHEAP_PAGE_SIZE    (1 * XMEM_PAGE_SIZE)
-#define XARRAY_BLOCK_SIZE   (1024 * XMHEAP_PAGE_SIZE)
+#define XARRAY_BLOCK_SIZE   (512 * XMHEAP_PAGE_SIZE)
 #define XARRAY_CCTXT_SIZE   (sizeof(xchunk_context_t))
 #define XMHEAP_RBTREE_SIZE  (16 * sizeof(x_handle_t))
 #define XMHEAP_RBNODE_SIZE  (5 * sizeof(x_handle_t))
 
 /** 比特位的 0 位判断 */
 #define XMEM_BITS_IS_0(xmem_bits, xut_bpos) \
-    (0 == ((xmem_bits)[(xut_bpos) / 8] & ((x_byte_t)(1 << ((xut_bpos) % 8)))))
+    (0 == ((xmem_bits)[(xut_bpos) >> 3] & ((x_byte_t)(1 << ((xut_bpos) & 7)))))
 
 /** 比特位的 1 位判断 */
 #define XMEM_BITS_IS_1(xmem_bits, xut_bpos) \
-    (0 != ((xmem_bits)[(xut_bpos) / 8] & ((x_byte_t)(1 << ((xut_bpos) % 8)))))
+    (0 != ((xmem_bits)[(xut_bpos) >> 3] & ((x_byte_t)(1 << ((xut_bpos) & 7)))))
 
 //====================================================================
 
@@ -226,6 +226,8 @@ typedef struct xmem_heap_t
     xarray_alias_t  xlist_tail;    ///< 双向链表的尾部伪 block 节点
     } xlist_array;
 
+    xarray_ctxptr_t xarray_cptr;   ///< 当前使用的 堆数组区块 对象
+
     /**
      * @brief 记录所有分配出去的 chunk 上下文信息（xchunk_context_t）的红黑树。
      */
@@ -343,17 +345,17 @@ static x_void_t xmem_bits_set(xmem_slice_t xmem_bits,
     // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
     // 可按跨字节的情况处理
 
-    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    if ((xut_bpos >> 3) == ((xut_bpos + xut_nums) >> 3))
     {
         if (0 == xut_vbit)
         {
-            xmem_bits[xut_bpos / 8] &=
-                ~((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos % 8)));
+            xmem_bits[xut_bpos >> 3] &=
+                ~((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos & 7)));
         }
         else
         {
-            xmem_bits[xut_bpos / 8] |=
-                ((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos % 8)));
+            xmem_bits[xut_bpos >> 3] |=
+                ((x_byte_t)(((1 << xut_nums) - 1) << (xut_bpos & 7)));
         }
 
         return;
@@ -363,33 +365,33 @@ static x_void_t xmem_bits_set(xmem_slice_t xmem_bits,
     // 跨字节的情况
 
     xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
-    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
-    XASSERT(0 == (xut_midl % 8));
+    XASSERT(0 == (xut_midl & 7));
 
     if (0 == xut_vbit)
     {
         if (xut_head > 0)
-            xmem_bits[xut_bpos / 8] &= (x_byte_t)(0xFF >> xut_head);
+            xmem_bits[xut_bpos >> 3] &= (x_byte_t)(0xFF >> xut_head);
 
         if (xut_midl > 0)
-            memset(xmem_bits + ((xut_bpos + 7) / 8), 0x00, xut_midl / 8);
+            memset(xmem_bits + ((xut_bpos + 7) >> 3), 0x00, xut_midl >> 3);
 
         if (xut_tail > 0)
-            xmem_bits[(xut_bpos + xut_nums) / 8] &=
+            xmem_bits[(xut_bpos + xut_nums) >> 3] &=
                                 (x_byte_t)(0xFF << xut_tail);
     }
     else
     {
         if (xut_head > 0)
-            xmem_bits[xut_bpos / 8] |= (x_byte_t)(0xFF << (8 - xut_head));
+            xmem_bits[xut_bpos >> 3] |= (x_byte_t)(0xFF << (8 - xut_head));
 
         if (xut_midl > 0)
-            memset(xmem_bits + ((xut_bpos + 7) / 8), 0xFF, xut_midl / 8);
+            memset(xmem_bits + ((xut_bpos + 7) >> 3), 0xFF, xut_midl >> 3);
 
         if (xut_tail > 0)
-            xmem_bits[(xut_bpos + xut_nums) / 8] |=
+            xmem_bits[(xut_bpos + xut_nums) >> 3] |=
                                 (x_byte_t)(0xFF >> (8 - xut_tail));
     }
 
@@ -426,7 +428,7 @@ static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
     // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
     // 可按跨字节的情况处理
 
-    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    if ((xut_bpos >> 3) == ((xut_bpos + xut_nums) >> 3))
     {
         while (xut_nums-- > 0)
         {
@@ -442,11 +444,11 @@ static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
     // 跨字节的情况
 
     xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
-    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
-    XASSERT(0 == (xut_midl % 8));
-    xut_midl /= 8;
+    XASSERT(0 == (xut_midl & 7));
+    xut_midl >>= 3;
 
     while (xut_head-- > 0)
     {
@@ -455,11 +457,11 @@ static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
         xut_iter += 1;
     }
 
-    XASSERT(0 == (xut_iter % 8));
+    XASSERT(0 == (xut_iter & 7));
 
     while (xut_midl-- > 0)
     {
-        if (0x00 == xmem_bits[xut_iter / 8])
+        if (0x00 == xmem_bits[xut_iter >> 3])
         {
             xut_iter += 8;
         }
@@ -477,7 +479,7 @@ static x_uint32_t xmem_bits_check_0(xmem_slice_t xmem_bits,
         }
     }
 
-    XASSERT(0 == (xut_iter % 8));
+    XASSERT(0 == (xut_iter & 7));
 
     while (xut_tail-- > 0)
     {
@@ -521,7 +523,7 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
     // 满字节的情况（如 xut_bpos: 0, xut_nums: 8），
     // 可按跨字节的情况处理
 
-    if ((xut_bpos / 8) == ((xut_bpos + xut_nums) / 8))
+    if ((xut_bpos >> 3) == ((xut_bpos + xut_nums) >> 3))
     {
         while (xut_nums-- > 0)
         {
@@ -537,11 +539,11 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
     // 跨字节的情况
 
     xut_head = X_ALIGN(xut_bpos, 8) - xut_bpos;
-    xut_tail = (xut_bpos + xut_nums) % 8;
+    xut_tail = (xut_bpos + xut_nums) & 7;
     xut_midl = xut_nums - xut_head - xut_tail;
 
-    XASSERT(0 == (xut_midl % 8));
-    xut_midl /= 8;
+    XASSERT(0 == (xut_midl & 7));
+    xut_midl >>= 3;
 
     while (xut_head-- > 0)
     {
@@ -550,11 +552,11 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
         xut_iter += 1;
     }
 
-    XASSERT(0 == (xut_iter % 8));
+    XASSERT(0 == (xut_iter & 7));
 
     while (xut_midl-- > 0)
     {
-        if (0xFF == xmem_bits[xut_iter / 8])
+        if (0xFF == xmem_bits[xut_iter >> 3])
         {
             xut_iter += 8;
         }
@@ -572,7 +574,7 @@ static x_uint32_t xmem_bits_check_1(xmem_slice_t xmem_bits,
         }
     }
 
-    XASSERT(0 == (xut_iter % 8));
+    XASSERT(0 == (xut_iter & 7));
 
     while (xut_tail-- > 0)
     {
@@ -1127,7 +1129,9 @@ static xblock_handle_t xmheap_alloc_block(
     XASSERT(xblock_size == X_ALIGN(xblock_size, XMHEAP_PAGE_SIZE));
 
     x_uint32_t xmpage_nums = xmem_block_page_nums(xblock_size);
-    xblock_handle_t xblock_ptr = (xblock_handle_t)xsys_heap_alloc(xblock_size);
+
+    xblock_handle_t xblock_ptr =
+        (xblock_handle_t)xsys_heap_alloc(xblock_size);
     if (X_NULL == xblock_ptr)
     {
         return X_NULL;
@@ -1258,6 +1262,11 @@ static x_void_t xmheap_free_array(
 {
     XASSERT(XSLICE_QUEUE_IS_FULL(xarray_ptr, x_uint32_t));
 
+    if (xmheap_ptr->xarray_cptr == xarray_ptr)
+    {
+        xmheap_ptr->xarray_cptr = X_NULL;
+    }
+
     xmheap_ptr->xsize_cached -= xarray_ptr->xarray_size;
 
     xmheap_array_list_erase(xmheap_ptr, xarray_ptr);
@@ -1336,10 +1345,12 @@ static xchunk_memptr_t xmheap_alloc_chunk(
     //======================================
     // 申请新的 堆内存区块 来分配 内存块
 
-    if (xchunk_size >= (xmem_block_page_nums(xblock_size) * XMHEAP_PAGE_SIZE))
+    if ((xchunk_size >= (xmem_block_page_nums(xblock_size) * XMHEAP_PAGE_SIZE))
+        ||
+        ((xblock_size + xmheap_ptr->xsize_cached) > xmheap_ptr->xsize_ulimit))
     {
         xblock_size = sizeof(xmem_block_t) +
-                      ((xchunk_size / XMHEAP_PAGE_SIZE) + 7) / 8 +
+                      (((xchunk_size / XMHEAP_PAGE_SIZE) + 7) >> 3) +
                       xchunk_size;
         xblock_size = X_ALIGN(xblock_size, XMHEAP_PAGE_SIZE);
     }
@@ -1387,6 +1398,10 @@ static xchunk_memptr_t xmheap_alloc_chunk(
  * @param [in ] xchunk_ptr  : 指向对应的内存块地址。
  * @param [in ] xowner_ptr  : 持有该内存块的标识句柄。
  * @param [in ] xblock_ptr  : 内存块所属的 堆内存区块 对象。
+ * 
+ * @return xchunk_ctxptr_t
+ *         - 成功，返回 xchunk_context_t 对象；
+ *         - 失败，返回 X_NULL。
  */
 static xchunk_ctxptr_t xmheap_alloc_cctxt(
                             xmheap_handle_t xmheap_ptr,
@@ -1400,27 +1415,37 @@ static xchunk_ctxptr_t xmheap_alloc_cctxt(
 
     //======================================
 
-    for (xarray_ptr  = XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr);
-         xarray_ptr != XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr);
-         xarray_ptr  = xarray_ptr->xlist_node.xarray_next)
+    if ((X_NULL != xmheap_ptr->xarray_cptr) &&
+        XSLICE_QUEUE_NOT_EMPTY(xmheap_ptr->xarray_cptr))
     {
-        if (!XSLICE_QUEUE_IS_EMPTY(xarray_ptr))
-        {
-            if (xarray_ptr != XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr))
-            {
-                xmheap_array_list_erase(xmheap_ptr, xarray_ptr);
-                xmheap_array_list_push_head(xmheap_ptr, xarray_ptr);
-            }
-
-            break;
-        }
+        xarray_ptr = xmheap_ptr->xarray_cptr;
     }
-
-    if (XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr) == xarray_ptr)
+    else
     {
-        xarray_ptr = xmheap_alloc_array(xmheap_ptr, XARRAY_BLOCK_SIZE);
-        XASSERT(X_NULL != xarray_ptr);
-        xmheap_array_list_push_head(xmheap_ptr, xarray_ptr);
+        for (xarray_ptr = XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr);
+             xarray_ptr != XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr);
+             xarray_ptr = xarray_ptr->xlist_node.xarray_next)
+        {
+            if (XSLICE_QUEUE_NOT_EMPTY(xarray_ptr))
+            {
+                if (xarray_ptr != XMHEAP_ARRAY_LIST_FRONT(xmheap_ptr))
+                {
+                    xmheap_array_list_erase(xmheap_ptr, xarray_ptr);
+                    xmheap_array_list_push_head(xmheap_ptr, xarray_ptr);
+                }
+
+                break;
+            }
+        }
+
+        if (XMHEAP_ARRAY_LIST_TAIL(xmheap_ptr) == xarray_ptr)
+        {
+            xarray_ptr = xmheap_alloc_array(xmheap_ptr, XARRAY_BLOCK_SIZE);
+            XASSERT(X_NULL != xarray_ptr);
+            xmheap_array_list_push_head(xmheap_ptr, xarray_ptr);
+        }
+
+        xmheap_ptr->xarray_cptr = xarray_ptr;
     }
 
     //======================================
@@ -1460,23 +1485,32 @@ static xchunk_ctxptr_t xrbtree_hit_cctxt(
                             x_rbtree_ptr xthis_ptr,
                             xmem_slice_t xmem_ptr)
 {
-    xchunk_ctxptr_t xcctxt_ptr = X_NULL;
-    x_rbnode_iter   xiter_node = xrbtree_lower_bound_cctxt(
-                                        xthis_ptr, (xchunk_ctxptr_t)xmem_ptr);
+    xchunk_ctxptr_t  xcctxt_ptr = X_NULL;
+    x_rbnode_iter    xiter_node = X_NULL;
 
+    //======================================
+
+    struct 
+    {
+        x_uint32_t      xchunk_size;
+        xchunk_memptr_t xchunk_ptr;
+    } xmhit_ctxt = { 1, (xchunk_memptr_t)xmem_ptr };
+
+    xiter_node = xrbtree_find_cctxt(xthis_ptr, (xchunk_ctxptr_t)&xmhit_ctxt);
     if (xrbtree_iter_is_nil(xiter_node))
     {
         return X_NULL;
     }
 
-    xcctxt_ptr = xrbtree_iter_cctxt(xiter_node);
-    XASSERT((X_NULL != xcctxt_ptr) && (X_NULL != xcctxt_ptr->xchunk_ptr));
+    //======================================
 
-    if ((xmem_ptr <  XCCTXT_LADDR(xcctxt_ptr)) ||
-        (xmem_ptr >= XCCTXT_RADDR(xcctxt_ptr)))
-    {
-        xcctxt_ptr = X_NULL;
-    }
+    xcctxt_ptr = xrbtree_iter_cctxt(xiter_node);
+
+    XASSERT((X_NULL != xcctxt_ptr) && (X_NULL != xcctxt_ptr->xchunk_ptr));
+    XASSERT((xmem_ptr >= XCCTXT_LADDR(xcctxt_ptr)) &&
+            (xmem_ptr <  XCCTXT_RADDR(xcctxt_ptr)));
+
+    //======================================
 
     return xcctxt_ptr;
 }
@@ -1618,6 +1652,8 @@ xmheap_handle_t xmheap_create(x_uint32_t xsize_block, x_uint64_t xsize_ulimit)
 
     xmheap_block_list_init(xmheap_ptr);
     xmheap_array_list_init(xmheap_ptr);
+
+    xmheap_ptr->xarray_cptr = X_NULL;
 
     xrbtree_emplace_create(XMHEAP_RBTREE(xmheap_ptr),
                            sizeof(xchunk_ctxptr_t),
@@ -1807,7 +1843,7 @@ x_int32_t xmheap_recyc(xmheap_handle_t xmheap_ptr,
         if (xmheap_ptr->xsize_cached >= (xmheap_ptr->xsize_ulimit / 2))
         {
             xmheap_free_unused_block(xmheap_ptr);
-            // xmheap_free_unused_array(xmheap_ptr);
+            xmheap_free_unused_array(xmheap_ptr);
         }
 
         xit_error = XMEM_ERR_OK;
