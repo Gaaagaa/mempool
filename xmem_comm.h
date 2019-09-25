@@ -306,7 +306,7 @@ static inline x_void_t * xatomic_xchg_ptr(
     x_void_t * volatile * xdst_ptr, x_void_t * xchg_ptr)
 {
 #ifdef _MSC_VER
-    return _InterlockedExchangePointer(xdst_ptr, xchg_ptr);
+    return InterlockedExchangePointer(xdst_ptr, xchg_ptr);
 #elif defined(__GNUC__)
     x_void_t * xold_ptr;
     do 
