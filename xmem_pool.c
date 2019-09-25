@@ -21,6 +21,7 @@
  */
 
 #include "xmem_comm.h"
+#include "xmem_pool.h"
 #include "xrbtree.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -533,7 +534,7 @@ x_uint32_t xmem_align_size(x_uint32_t xut_size)
         53248, 53248, 57344, 57344, 61440, 61440, 65536, 65536
     };
 
-#define X_INDEX(size, align) (((size) + (align) - 1) / (align) - 1)
+#define X_INDEX(size, shift) ((((size) + (1 << (shift)) - 1) >> (shift)) - 1)
 
     if (xut_size <= 1024)
     {
@@ -541,22 +542,21 @@ x_uint32_t xmem_align_size(x_uint32_t xut_size)
         {
             if (xut_size <= 0)
                 return 0;
-            return xsize_align_8[X_INDEX(xut_size, 8)];
+            return xsize_align_8[X_INDEX(xut_size, 3)];
         }
-        return xsize_align_32[X_INDEX(xut_size - 256, 32)];
+        return xsize_align_32[X_INDEX(xut_size - 256, 5)];
     }
     else if (xut_size <= 16384)
     {
         if (xut_size <= 4096)
-            return xsize_align_128[X_INDEX(xut_size - 1024, 128)];
-        return xsize_align_512[X_INDEX(xut_size - 4096, 512)];
+            return xsize_align_128[X_INDEX(xut_size - 1024, 7)];
+        return xsize_align_512[X_INDEX(xut_size - 4096, 9)];
     }
     else if (xut_size <= 65536)
     {
-        return xsize_align_2048[X_INDEX(xut_size - 16384, 2048)];
+        return xsize_align_2048[X_INDEX(xut_size - 16384, 11)];
     }
 
-    xut_size += sizeof(xmem_chunk_t);
     return X_ALIGN(xut_size, XMEM_PAGE_SIZE);
 
 #undef X_INDEX
@@ -1627,12 +1627,13 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size)
 
     if (xut_size <= 0)
         return X_NULL;
-    xut_size = xmem_align_size(xut_size);
 
     //======================================
 
     if (xut_size > XSLICE_SIZE_65536)
     {
+        xut_size = X_ALIGN(xut_size + sizeof(xmem_chunk_t), XMEM_PAGE_SIZE);
+
         xchunk_ptr = xmpool_alloc_chunk(
                             xmpool_ptr,
                             xut_size,
@@ -1644,6 +1645,8 @@ xmem_slice_t xmpool_alloc(xmpool_handle_t xmpool_ptr, x_uint32_t xut_size)
     }
     else
     {
+        xut_size = xmem_align_size(xut_size);
+
         if ((X_NULL != xmpool_ptr->xchunk_cptr) &&
             (xut_size == xmpool_ptr->xchunk_cptr->xslice_size) &&
             !XSLICE_QUEUE_IS_EMPTY(xmpool_ptr->xchunk_cptr))
