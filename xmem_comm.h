@@ -355,7 +355,7 @@ static inline x_uint32_t xatomic_add_32(
 {
 #ifdef _MSC_VER
     return _InterlockedExchangeAdd(xut_dest, xut_value);
-#elif defined __GNUC__
+#elif defined(__GNUC__)
     return __sync_fetch_and_add(xut_dest, xut_value);
 #else
     XASSERT(X_FALSE);
