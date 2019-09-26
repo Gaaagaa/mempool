@@ -37,7 +37,7 @@
 #include <sys/syscall.h>
 #include <sched.h>
 #else
-#error "Unknow platform"
+#error "Unknown platform"
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
